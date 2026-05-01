@@ -7,7 +7,11 @@ public class DragAndDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndD
     private CanvasGroup canvasGroup;
 
     [SerializeField] private CompilerManager compilerManager;
-
+    [SerializeField] private GameObject prefab;
+    public void Spawn()
+    {
+        Instantiate(prefab, transform.position, Quaternion.identity);
+    }
     private void Awake()
     {
         rectTransform = GetComponent<RectTransform>();
@@ -22,6 +26,7 @@ public class DragAndDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndD
             if (compilerManager == null)
             {
                 Debug.LogError("DragAndDrop: не найден объект с компонентом CompilerManager в сцене");
+                
             }
         }
     }
