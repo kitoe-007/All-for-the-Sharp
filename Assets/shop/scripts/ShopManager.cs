@@ -1,13 +1,12 @@
 using UnityEngine;
 using UnityEngine.UI;
-using TMPro;
 
 public class ShopManager : MonoBehaviour
 {
-    public int playerMoney = 99;
+    public int playerMoney = 100;
 
-    public Text mainMoneyText;      // Обычный текст на экране
-    public TMP_Text shopBalanceText; // TextMeshPro внутри магазина
+    public Text mainMoneyText;
+    public Text shopBalanceText;
 
     void Start()
     {
@@ -20,17 +19,23 @@ public class ShopManager : MonoBehaviour
             mainMoneyText.text = playerMoney.ToString();
 
         if (shopBalanceText != null)
-            shopBalanceText.text = $"{playerMoney}";
+            shopBalanceText.text = playerMoney.ToString();
     }
 
-    public bool TryBuyItem(int price)
+    public bool TrySpendMoney(int amount)
     {
-        if (playerMoney >= price)
+        if (playerMoney >= amount)
         {
-            playerMoney -= price;
+            playerMoney -= amount;
             UpdateMoneyUI();
             return true;
         }
         return false;
+    }
+
+    public void AddMoney(int amount)
+    {
+        playerMoney += amount;
+        UpdateMoneyUI();
     }
 }

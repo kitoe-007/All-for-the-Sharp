@@ -1,42 +1,51 @@
 using UnityEngine;
 using UnityEngine.UI;
-using TMPro; // У тебя TextMeshPro, так что эта строка нужна
+using TMPro;
 
 public class ShopItem : MonoBehaviour
 {
-    public int price;  // Цену укажешь в инспекторе (50, 100, и т.д.)
+    public int price;
+    public string itemName;
+    public Sprite itemIcon;  // Перетащи сюда спрайт предмета
 
     private Button button;
-    private TMP_Text priceText; // У тебя TextMeshPro, не обычный Text
+    private TMP_Text priceText;
 
     void Start()
     {
         button = GetComponent<Button>();
-
-        // Находим текст с ценой (дочерний объект priceText)
         priceText = GetComponentInChildren<TMP_Text>();
 
-        // Ставим цену на кнопку
         if (priceText != null)
             priceText.text = price.ToString();
 
-        // Вешаем действие на кнопку
         if (button != null)
-            button.onClick.AddListener(BuyItem);
+            button.onClick.AddListener(TryBuy);
     }
 
-    void BuyItem()
+    void TryBuy()
     {
-        // Находим менеджера магазина
         ShopManager shop = FindFirstObjectByType<ShopManager>();
+        InventoryManager inv = FindFirstObjectByType<InventoryManager>();
 
-        if (shop != null)
+        if (shop != null && inv != null)
         {
-            // Пытаемся купить
-            if (shop.TryBuyItem(price))
+            if (shop.TrySpendMoney(price))
             {
-                Debug.Log($"Куплен товар за {price} монет");
-                Destroy(gameObject); // Удаляем товар из магазина
+                // Добавляем предмет в инвентарь
+                bool added = inv.AddItem(itemIcon);
+
+                if (added)
+                {
+                    Debug.Log($"Куплено: {itemName}");
+                    Destroy(gameObject);
+                }
+                else
+                {
+                    // Инвентарь полон — возвращаем деньги
+                    shop.AddMoney(price);
+                    Debug.Log("Инвентарь полон!");
+                }
             }
             else
             {
