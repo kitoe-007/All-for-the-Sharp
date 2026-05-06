@@ -46,11 +46,15 @@ public class CompilerManager : MonoBehaviour
             var command = FindDeep(content, name);
             if (command == null) continue;
 
+            var typeRoot = command.Find("type");
             var param = command.Find("param");
+            var operatorRoot = command.Find("operator");
             var value = command.Find("value");
 
+            string typeText = ReadDropdownSelection(typeRoot);
             string paramText = ReadUiText(param);
             string valueText = ReadUiText(value);
+            string operatorText = ReadDropdownSelection(operatorRoot);
 
             // Частый случай: в InputField/TMP_InputField не введён текст, и мы читаем плейсхолдер.
             if (string.IsNullOrWhiteSpace(paramText) || LooksLikePlaceholder(param, paramText))
@@ -211,6 +215,31 @@ public class DynamicScript
             if (found != null) return found;
         }
         return null;
+    }
+
+    private static string ReadDropdownSelection(Transform t)
+    {
+        if (t == null) return string.Empty;
+
+        var tmpDropdown = t.GetComponentInChildren<TMP_Dropdown>(true);
+        if (tmpDropdown != null)
+        {
+            int i = tmpDropdown.value;
+            if (i >= 0 && i < tmpDropdown.options.Count)
+                return tmpDropdown.options[i].text ?? string.Empty;
+            return i.ToString();
+        }
+
+        var dropdown = t.GetComponentInChildren<Dropdown>(true);
+        if (dropdown != null)
+        {
+            int i = dropdown.value;
+            if (i >= 0 && i < dropdown.options.Count)
+                return dropdown.options[i].text ?? string.Empty;
+            return i.ToString();
+        }
+
+        return ReadUiText(t);
     }
 
     private static string ReadUiText(Transform t)
