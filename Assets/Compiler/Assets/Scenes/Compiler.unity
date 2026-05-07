@@ -243,8 +243,9 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 60471505}
+  - component: {fileID: 60471506}
   m_Layer: 0
-  m_Name: Command
+  m_Name: VariableCommand_1
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -273,6 +274,20 @@ RectTransform:
   m_AnchoredPosition: {x: 10.041016, y: 116.7}
   m_SizeDelta: {x: 471.482, y: 47.0441}
   m_Pivot: {x: 0.5, y: 0.5}
+--- !u!114 &60471506
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 60471504}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c5a346fe8459cbc4684347f447a356db, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DragAndDrop
+  compilerManager: {fileID: 1070959472}
+  prefab: {fileID: 0}
 --- !u!1 &81629548
 GameObject:
   m_ObjectHideFlags: 0
@@ -580,7 +595,7 @@ MonoBehaviour:
   m_TargetGraphic: {fileID: 609203806}
   m_HandleRect: {fileID: 609203805}
   m_Direction: 2
-  m_Value: 0
+  m_Value: 1
   m_Size: 1
   m_NumberOfSteps: 0
   m_OnValueChanged:
@@ -2210,13 +2225,16 @@ MonoBehaviour:
   m_MultiSelect: 0
   m_Options:
     m_Options:
-    - m_Text: INT
+    - m_Text: int
       m_Image: {fileID: 0}
       m_Color: {r: 1, g: 1, b: 1, a: 1}
-    - m_Text: STRING
+    - m_Text: string
       m_Image: {fileID: 0}
       m_Color: {r: 1, g: 1, b: 1, a: 1}
-    - m_Text: BOOL
+    - m_Text: bool
+      m_Image: {fileID: 0}
+      m_Color: {r: 1, g: 1, b: 1, a: 1}
+    - m_Text: 
       m_Image: {fileID: 0}
       m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_OnValueChanged:
@@ -2393,7 +2411,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: INT
+  m_text: int
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -2631,7 +2649,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CompilerManager
   content: {fileID: 1208615794}
   compiler: {fileID: 868035180}
-  CommandPrefab: {fileID: 85134102469993028, guid: 099571ac09caff741a61c50eabdb8309, type: 3}
+  VariableCommandPrefab: {fileID: 0}
   spawnParent: {fileID: 1617726416}
 --- !u!4 &1070959473
 Transform:
@@ -2880,7 +2898,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: 0.00012113821}
+  m_AnchoredPosition: {x: 0, y: -0.000021872058}
   m_SizeDelta: {x: 0, y: 300}
   m_Pivot: {x: 0, y: 1}
 --- !u!1 &1300421984

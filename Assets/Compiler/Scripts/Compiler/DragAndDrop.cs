@@ -39,7 +39,7 @@ public class DragAndDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndD
         canvasGroup.blocksRaycasts = false; // чтобы луч проходил сквозь объект
         if (compilerManager != null)
             {
-                compilerManager.SpawnCommand();
+                compilerManager.SpawnVariableCommand();
             }
     }
 
@@ -64,7 +64,7 @@ public class DragAndDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndD
             // Устанавливаем локальную позицию в ноль (или можно выровнять по центру зоны)
             rectTransform.anchoredPosition = Vector2.zero;
 
-            // Вызываем SpawnCommand только если ссылка успешно найдена
+            // Вызываем SpawnVariableCommand только если ссылка успешно найдена
             
         }
         else

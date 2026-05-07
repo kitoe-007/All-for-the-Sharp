@@ -9,18 +9,27 @@ public class CompilerManager : MonoBehaviour
 {
     [SerializeField] private Transform content; // Scroll View/Viewport/Content
     [SerializeField] private Compiler compiler;
-    public GameObject CommandPrefab; // Ссылка на префаб (перетащите в инспектор)
+    private int variableCommandCounter = 1;
+
+    private string DynamicScriptStart = $@"
+using UnityEngine;
+public class DynamicScript
+{{
+    public void Run()
+    {{";
+
+    private string DynamicScriptEnd = $@"
+    }}
+}}";
+
+    public GameObject VariableCommandPrefab; // Ссылка на префаб (перетащите в инспектор)
     public Transform spawnParent;
     // Start is called once before the first execution of Update after the MonoBehaviour is created
-    public void SpawnCommand()
+    public void SpawnVariableCommand()
     {
-        if (CommandPrefab == null || spawnParent == null)
-        {
-            Debug.LogError("CompilerManager: не задан CommandPrefab и/или spawnParent.");
-            return;
-        }
-
-        Instantiate(CommandPrefab, spawnParent);
+        var go = Instantiate(VariableCommandPrefab, spawnParent);
+        variableCommandCounter++;
+        go.name = $"VariableCommand_{variableCommandCounter}";
     }
 
     public void RunCode()
@@ -45,54 +54,56 @@ public class CompilerManager : MonoBehaviour
         {
             var command = FindDeep(content, name);
             if (command == null) continue;
-
-            var typeRoot = command.Find("type");
-            var param = command.Find("param");
-            var operatorRoot = command.Find("operator");
-            var value = command.Find("value");
-
-            string typeText = ReadDropdownSelection(typeRoot);
-            string paramText = ReadUiText(param);
-            string valueText = ReadUiText(value);
-            string operatorText = ReadDropdownSelection(operatorRoot);
-
-            // Частый случай: в InputField/TMP_InputField не введён текст, и мы читаем плейсхолдер.
-            if (string.IsNullOrWhiteSpace(paramText) || LooksLikePlaceholder(param, paramText))
-                continue;
-            if (string.IsNullOrWhiteSpace(valueText) || LooksLikePlaceholder(value, valueText))
-                continue;
-
-            var variableName = SanitizeIdentifier(paramText);
-            if (string.IsNullOrWhiteSpace(variableName))
+            if (command.name.StartsWith("VariableCommand_"))
             {
-                Debug.LogError($"CompilerManager: некорректное имя переменной '{paramText}' (Command='{name}'). Разрешены буквы/цифры/_ и первый символ не цифра.");
-                continue;
+                var typeRoot = command.Find("type");
+                var param = command.Find("param");
+                var operatorRoot = command.Find("operator");
+                var value = command.Find("value");
+
+                string typeText = ReadDropdownSelection(typeRoot);
+                string paramText = ReadUiText(param);
+                string valueText = ReadUiText(value);
+                string operatorText = ReadDropdownSelection(operatorRoot);
+
+                // Частый случай: в InputField/TMP_InputField не введён текст, и мы читаем плейсхолдер.
+                if (string.IsNullOrWhiteSpace(paramText) || LooksLikePlaceholder(param, paramText))
+                    continue;
+                if (string.IsNullOrWhiteSpace(valueText) || LooksLikePlaceholder(value, valueText))
+                    continue;
+
+                var variableName = SanitizeIdentifier(paramText);
+                if (string.IsNullOrWhiteSpace(variableName))
+                {
+                    Debug.LogError($"CompilerManager: некорректное имя переменной '{paramText}' (Command='{name}'). Разрешены буквы/цифры/_ и первый символ не цифра.");
+                    continue;
+                }
+
+                // Превращаем ввод в C# выражение. Если это не число/bool/null/литерал,
+                // считаем это строкой и добавляем кавычки/экранирование.
+                var expr = ToCSharpExpression(valueText);
+                if (string.IsNullOrWhiteSpace(expr))
+                {
+                    Debug.LogError($"CompilerManager: пустое значение (Command='{name}', var='{variableName}').");
+                    continue;
+                }
+
+                // Важно: это "eval". Не компилируй ввод из недоверенных источников.
+                string codeToCompile = BuildDynamicScript(variableName, expr, typeText, operatorText);
+
+                var asm = compiler.CompileCode(codeToCompile);
+                if (asm == null)
+                {
+                    Debug.LogError($"CompilerManager: компиляция не удалась (Command='{name}').");
+                    continue;
+                }
+
+                compiler.ExecuteCompiledCode(asm, "DynamicScript", "Run");
             }
-
-            // Превращаем ввод в C# выражение. Если это не число/bool/null/литерал,
-            // считаем это строкой и добавляем кавычки/экранирование.
-            var expr = ToCSharpExpression(valueText);
-            if (string.IsNullOrWhiteSpace(expr))
-            {
-                Debug.LogError($"CompilerManager: пустое значение (Command='{name}', var='{variableName}').");
-                continue;
-            }
-
-            // Важно: это "eval". Не компилируй ввод из недоверенных источников.
-            string codeToCompile = BuildDynamicScript(variableName, expr);
-
-            var asm = compiler.CompileCode(codeToCompile);
-            if (asm == null)
-            {
-                Debug.LogError($"CompilerManager: компиляция не удалась (Command='{name}').");
-                continue;
-            }
-
-            compiler.ExecuteCompiledCode(asm, "DynamicScript", "Run");
         }
     }
 
-    private static string BuildDynamicScript(string variableName, string expression)
+    private static string BuildDynamicScript(string variableName, string expression, string variableType, string operatorV)
     {
         return $@"
 using UnityEngine;
@@ -100,7 +111,7 @@ public class DynamicScript
 {{
     public void Run()
     {{
-        var {variableName} = {expression};
+        {variableType} {variableName} {operatorV} {expression};
         Debug.Log({variableName});
     }}
 }}";
@@ -199,7 +210,7 @@ public class DynamicScript
         var names = new List<string>(objs.Count);
         foreach (var go in objs)
         {
-            if (go != null && go.name != null && go.name.StartsWith("Command"))
+            if (go != null && go.name != null && go.name.IndexOf("Command", System.StringComparison.Ordinal) >= 0)
                 names.Add(go.name);
         }
         return names.ToArray();
