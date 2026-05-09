@@ -1,10 +1,10 @@
 fileFormatVersion: 2
-guid: 52a97d44ec273bd42bf3fa8a68927d24
+guid: 9e47ca56a84077b4c8fead41f4f7dc6c
 TextureImporter:
   internalIDToNameTable:
   - first:
-      213: -6596419783474555565
-    second: jorka_jump_0
+      213: -6681734845515141598
+    second: fone_0
   externalObjects: {}
   serializedVersion: 13
   mipmaps:
@@ -100,13 +100,13 @@ TextureImporter:
     serializedVersion: 2
     sprites:
     - serializedVersion: 2
-      name: jorka_jump_0
+      name: fone_0
       rect:
         serializedVersion: 2
-        x: 6
-        y: 18
-        width: 64
-        height: 21
+        x: 0
+        y: 0
+        width: 429
+        height: 281
       alignment: 0
       pivot: {x: 0, y: 0}
       border: {x: 0, y: 0, z: 0, w: 0}
@@ -115,8 +115,8 @@ TextureImporter:
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: 355d3a0082fc474a0800000000000000
-      internalID: -6596419783474555565
+      spriteID: 22e68b13f85b543a0800000000000000
+      internalID: -6681734845515141598
       vertices: []
       indices: 
       edges: []
@@ -135,7 +135,7 @@ TextureImporter:
     spriteCustomMetadata:
       entries: []
     nameFileIdTable:
-      jorka_jump_0: -6596419783474555565
+      fone_0: -6681734845515141598
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 
