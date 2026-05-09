@@ -6,7 +6,7 @@ public class ShopItem : MonoBehaviour
 {
     public int price;
     public string itemName;
-    public Sprite itemIcon;  // Перетащи сюда спрайт предмета
+    public Sprite itemIcon;
 
     private Button button;
     private TMP_Text priceText;
@@ -21,6 +21,8 @@ public class ShopItem : MonoBehaviour
 
         if (button != null)
             button.onClick.AddListener(TryBuy);
+
+        Debug.Log($"Товар {itemName}: цена {price}");
     }
 
     void TryBuy()
@@ -28,28 +30,27 @@ public class ShopItem : MonoBehaviour
         ShopManager shop = FindFirstObjectByType<ShopManager>();
         InventoryManager inv = FindFirstObjectByType<InventoryManager>();
 
+        Debug.Log($"Попытка купить {itemName} за {price}. Денег у игрока: {shop?.playerMoney}");
+
         if (shop != null && inv != null)
         {
             if (shop.TrySpendMoney(price))
             {
-                // Добавляем предмет в инвентарь
                 bool added = inv.AddItem(itemIcon);
-
                 if (added)
                 {
-                    Debug.Log($"Куплено: {itemName}");
-                    Destroy(gameObject);
+                    Debug.Log($"Успешно куплено! Осталось денег: {shop.playerMoney}");
+                    Destroy(gameObject, 0.1f);
                 }
                 else
                 {
-                    // Инвентарь полон — возвращаем деньги
                     shop.AddMoney(price);
-                    Debug.Log("Инвентарь полон!");
+                    Debug.Log("Инвентарь полон, деньги возвращены");
                 }
             }
             else
             {
-                Debug.Log($"Не хватает денег! Нужно: {price}");
+                Debug.Log($"НЕ ХВАТАЕТ ДЕНЕГ! Нужно: {price}, Есть: {shop.playerMoney}");
             }
         }
     }

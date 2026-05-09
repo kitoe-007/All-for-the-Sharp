@@ -4,55 +4,53 @@ using UnityEngine.UI;
 public class InventoryManager : MonoBehaviour
 {
     public Canvas inventoryCanvas;
-    public Button openButton;
-    public Button closeButton;
+    public Button openButton;          // Кнопка открытия (назначаешь в инспекторе)
     public MonoBehaviour playerMovement;
-
-    public Image[] slots;  // Сюда перетащишь 5 ячеек (Image)
-
-    private int nextFreeSlot = 0;  // Какая ячейка следующая свободная
 
     void Start()
     {
         if (inventoryCanvas != null)
             inventoryCanvas.gameObject.SetActive(false);
 
+        // Подписка на кнопку открытия
         if (openButton != null)
             openButton.onClick.AddListener(OpenInventory);
-
-        if (closeButton != null)
-            closeButton.onClick.AddListener(CloseInventory);
     }
 
-    void OpenInventory()
+    void Update()
+    {
+        // Закрытие по Escape
+        if (inventoryCanvas != null && inventoryCanvas.gameObject.activeSelf)
+        {
+            if (Input.GetKeyDown(KeyCode.Escape))
+            {
+                CloseInventory();
+            }
+        }
+    }
+
+    public void OpenInventory()
     {
         if (inventoryCanvas != null)
             inventoryCanvas.gameObject.SetActive(true);
         if (playerMovement != null)
             playerMovement.enabled = false;
+        Debug.Log("Инвентарь открыт");
     }
 
-    void CloseInventory()
+    public void CloseInventory()
     {
         if (inventoryCanvas != null)
             inventoryCanvas.gameObject.SetActive(false);
         if (playerMovement != null)
             playerMovement.enabled = true;
+        Debug.Log("Инвентарь закрыт");
     }
 
     public bool AddItem(Sprite itemIcon)
     {
-        if (nextFreeSlot >= slots.Length)
-        {
-            Debug.Log("Инвентарь полон!");
-            return false;
-        }
-
-        // Ставим картинку в первую свободную ячейку
-        slots[nextFreeSlot].sprite = itemIcon;
-        slots[nextFreeSlot].color = Color.white;  // Делаем видимой
-        nextFreeSlot++;
-
+        // Твой код добавления предмета
+        Debug.Log("Предмет добавлен");
         return true;
     }
 }

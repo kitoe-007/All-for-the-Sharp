@@ -1,10 +1,13 @@
 fileFormatVersion: 2
-guid: 8e49b89f0f354ce40a5bbfc49900c7f0
+guid: d2f81816b9c0d2b49be69c0e53758f87
 TextureImporter:
   internalIDToNameTable:
   - first:
-      213: -2233351024654120026
-    second: Lopata2_0
+      213: -5212254232558666467
+    second: inventori_vertical_0
+  - first:
+      213: 1054125479912016208
+    second: inventori_vertical_1
   externalObjects: {}
   serializedVersion: 13
   mipmaps:
@@ -100,23 +103,23 @@ TextureImporter:
     serializedVersion: 2
     sprites:
     - serializedVersion: 2
-      name: Lopata2_0
+      name: inventori_vertical_0
       rect:
         serializedVersion: 2
         x: 0
         y: 0
-        width: 32
-        height: 32
+        width: 65
+        height: 128
       alignment: 0
-      pivot: {x: 0, y: 0}
+      pivot: {x: 0.5, y: 0.5}
       border: {x: 0, y: 0, z: 0, w: 0}
       customData: 
       outline: []
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: 6ab8cbc631b8101e0800000000000000
-      internalID: -2233351024654120026
+      spriteID: d1d7055246a5aa7b0800000000000000
+      internalID: -5212254232558666467
       vertices: []
       indices: 
       edges: []
@@ -125,7 +128,7 @@ TextureImporter:
     customData: 
     physicsShape: []
     bones: []
-    spriteID: 
+    spriteID: c5345aa44dc300744b313a7f1356fee4
     internalID: 0
     vertices: []
     indices: 
@@ -135,7 +138,8 @@ TextureImporter:
     spriteCustomMetadata:
       entries: []
     nameFileIdTable:
-      Lopata2_0: -2233351024654120026
+      inventori_vertical_0: -5212254232558666467
+      inventori_vertical_1: 1054125479912016208
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 

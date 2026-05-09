@@ -1,3 +1,4 @@
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -5,8 +6,8 @@ public class ShopManager : MonoBehaviour
 {
     public int playerMoney = 100;
 
-    public Text mainMoneyText;
-    public Text shopBalanceText;
+    public TMP_Text mainMoneyText;  
+    public TMP_Text shopBalanceText;
 
     void Start()
     {
@@ -15,6 +16,8 @@ public class ShopManager : MonoBehaviour
 
     public void UpdateMoneyUI()
     {
+        Debug.Log($"Обновляем UI: money={playerMoney}, mainMoneyText={mainMoneyText != null}, shopBalanceText={shopBalanceText != null}");
+
         if (mainMoneyText != null)
             mainMoneyText.text = playerMoney.ToString();
 

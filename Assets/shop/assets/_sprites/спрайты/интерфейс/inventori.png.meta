@@ -1,10 +1,10 @@
 fileFormatVersion: 2
-guid: 73b46e5981aff1c48ab7a2a35b8bf054
+guid: b9b0f3a9a52cb29409b9020ecfe0f682
 TextureImporter:
   internalIDToNameTable:
   - first:
-      213: 2553903094404106744
-    second: kirka2 1_0
+      213: 2968864314863545466
+    second: inventori_0
   externalObjects: {}
   serializedVersion: 13
   mipmaps:
@@ -100,13 +100,13 @@ TextureImporter:
     serializedVersion: 2
     sprites:
     - serializedVersion: 2
-      name: kirka2 1_0
+      name: inventori_0
       rect:
         serializedVersion: 2
-        x: 0
+        x: 7
         y: 0
-        width: 32
-        height: 32
+        width: 25
+        height: 29
       alignment: 0
       pivot: {x: 0, y: 0}
       border: {x: 0, y: 0, z: 0, w: 0}
@@ -115,8 +115,8 @@ TextureImporter:
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: 8f94abc4559417320800000000000000
-      internalID: 2553903094404106744
+      spriteID: a7c66c95d56833920800000000000000
+      internalID: 2968864314863545466
       vertices: []
       indices: 
       edges: []
@@ -135,7 +135,7 @@ TextureImporter:
     spriteCustomMetadata:
       entries: []
     nameFileIdTable:
-      kirka2 1_0: 2553903094404106744
+      inventori_0: 2968864314863545466
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 
