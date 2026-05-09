@@ -1,10 +1,22 @@
 fileFormatVersion: 2
-guid: 4eb9e33b3938e184584e613e96807754
+guid: ab208e96b70593243aea54b199052a8d
 TextureImporter:
   internalIDToNameTable:
   - first:
-      213: -5782148945991620614
-    second: jora_run_right_1_0
+      213: -7955819631750886615
+    second: hole_0
+  - first:
+      213: -1559371844228785235
+    second: hole_1
+  - first:
+      213: 739657819067446742
+    second: hole_2
+  - first:
+      213: -5777117216721117150
+    second: hole_3
+  - first:
+      213: -6423655211045151834
+    second: hole_4
   externalObjects: {}
   serializedVersion: 13
   mipmaps:
@@ -96,40 +108,27 @@ TextureImporter:
     ignorePlatformSupport: 0
     androidETC2FallbackOverride: 0
     forceMaximumCompressionQuality_BC6H_BC7: 0
-  - serializedVersion: 4
-    buildTarget: WebGL
-    maxTextureSize: 2048
-    resizeAlgorithm: 0
-    textureFormat: -1
-    textureCompression: 1
-    compressionQuality: 50
-    crunchedCompression: 0
-    allowsAlphaSplitting: 0
-    overridden: 0
-    ignorePlatformSupport: 0
-    androidETC2FallbackOverride: 0
-    forceMaximumCompressionQuality_BC6H_BC7: 0
   spriteSheet:
     serializedVersion: 2
     sprites:
     - serializedVersion: 2
-      name: jora_run_right_1_0
+      name: hole_2
       rect:
         serializedVersion: 2
-        x: 1
+        x: 105
         y: 0
-        width: 63
-        height: 19
+        width: 34
+        height: 33
       alignment: 0
-      pivot: {x: 0, y: 0}
+      pivot: {x: 0.5, y: 0.5}
       border: {x: 0, y: 0, z: 0, w: 0}
       customData: 
       outline: []
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: af725c33b2ea1cfa0800000000000000
-      internalID: -5782148945991620614
+      spriteID: 6d5fad81edac34a00800000000000000
+      internalID: 739657819067446742
       vertices: []
       indices: 
       edges: []
@@ -138,7 +137,7 @@ TextureImporter:
     customData: 
     physicsShape: []
     bones: []
-    spriteID: 
+    spriteID: 169b183b377421d428d124edac6fd366
     internalID: 0
     vertices: []
     indices: 
@@ -148,7 +147,11 @@ TextureImporter:
     spriteCustomMetadata:
       entries: []
     nameFileIdTable:
-      jora_run_right_1_0: -5782148945991620614
+      hole_0: -7955819631750886615
+      hole_1: -1559371844228785235
+      hole_2: 739657819067446742
+      hole_3: -5777117216721117150
+      hole_4: -6423655211045151834
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 
