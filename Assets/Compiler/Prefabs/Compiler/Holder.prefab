@@ -38,7 +38,7 @@ RectTransform:
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
   m_AnchoredPosition: {x: -304, y: 83}
-  m_SizeDelta: {x: 240, y: 60}
+  m_SizeDelta: {x: 340, y: 60}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &2212943894285193886
 CanvasRenderer:
@@ -164,4 +164,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DropZone
   snapOffset: {x: 0, y: 0}
-  prefab: {fileID: 8677485937724143058}
+  prefabAfterDrop: {fileID: 8677485937724143058}
+  nextDropSpacingPixels: 75
+  clearDragAndDropChildrenOnSpawn: 1

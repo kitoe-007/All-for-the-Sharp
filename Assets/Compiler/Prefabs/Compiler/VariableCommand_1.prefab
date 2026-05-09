@@ -2183,7 +2183,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CommandSpawn
   compilerManager: {fileID: 0}
-  type: VariableCommand
+  commandType: 0
 --- !u!1 &5640801560337024613
 GameObject:
   m_ObjectHideFlags: 0

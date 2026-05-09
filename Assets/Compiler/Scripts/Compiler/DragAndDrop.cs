@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 using UnityEngine.EventSystems;
 
@@ -9,8 +10,16 @@ public class DragAndDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndD
     private RectTransform parentRectTransform;
     private Vector2 dragOffset;
 
+    /// <summary>Выставляется в <see cref="DropZone.OnDrop"/> при успешном сбросе.</summary>
+    private bool dropAccepted;
+
     [SerializeField] private CompilerManager compilerManager;
+    /// <summary>Используется, если на объекте нет <see cref="CommandSpawn"/>.</summary>
+    [SerializeField] private CompilerCommandType commandType = CompilerCommandType.VariableCommand;
     [SerializeField] private GameObject prefab;
+
+    private CommandSpawn commandSpawn;
+
     public void Spawn()
     {
         Instantiate(prefab, transform.position, Quaternion.identity);
@@ -23,6 +32,8 @@ public class DragAndDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndD
         parentRectTransform = rectTransform.parent as RectTransform;
         if (canvasGroup == null)
             canvasGroup = gameObject.AddComponent<CanvasGroup>();
+
+        commandSpawn = GetComponent<CommandSpawn>();
 
         // Если ссылку не задали в инспекторе, пробуем найти CompilerManager в сцене
         if (compilerManager == null)
@@ -38,7 +49,7 @@ public class DragAndDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndD
 
     public void OnBeginDrag(PointerEventData eventData)
     {
-        
+        parentRectTransform = rectTransform.parent as RectTransform;
 
         canvasGroup.alpha = 0.6f;
         canvasGroup.blocksRaycasts = false; // чтобы луч проходил сквозь объект
@@ -56,9 +67,10 @@ public class DragAndDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndD
         }
 
         if (compilerManager != null)
-            {
-                compilerManager.SpawnVariableCommand();
-            }
+        {
+            CompilerCommandType kind = commandSpawn != null ? commandSpawn.CommandKind : commandType;
+            compilerManager.SpawnCommand(kind);
+        }
     }
 
     public void OnDrag(PointerEventData eventData)
@@ -81,38 +93,22 @@ public class DragAndDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndD
         canvasGroup.alpha = 1f;
         canvasGroup.blocksRaycasts = true;
 
-        // Получаем объект под мышкой (исключая самого себя)
-        GameObject dropTarget = GetDropTarget(eventData);
-
-        if (dropTarget != null && dropTarget.TryGetComponent<DropZone>(out var dropZone))
-        {
-            // Прикрепляемся к зоне: становимся её дочерним элементом
-            transform.SetParent(dropTarget.transform);
-            
-            // Устанавливаем локальную позицию в ноль (или можно выровнять по центру зоны)
-            rectTransform.anchoredPosition = Vector2.zero;
-
-            // Вызываем SpawnVariableCommand только если ссылка успешно найдена
-            
-        }
-        else
-        {
-            // Возвращаем на место, если не попали в зону
-            Destroy(gameObject);
-        }
+        // OnDrop может вызываться после OnEndDrag в том же кадре — даём событиям завершиться.
+        StartCoroutine(ResolveDropAfterUiEvents());
     }
 
-    private GameObject GetDropTarget(PointerEventData eventData)
+    private IEnumerator ResolveDropAfterUiEvents()
     {
-        var results = new System.Collections.Generic.List<RaycastResult>();
-        EventSystem.current.RaycastAll(eventData, results);
+        yield return null;
+        if (!dropAccepted)
+            Destroy(gameObject);
+        else
+            dropAccepted = false;
+    }
 
-        foreach (var result in results)
-        {
-            // Пропускаем самого себя
-            if (result.gameObject != gameObject)
-                return result.gameObject;
-        }
-        return null;
+    /// <summary>Вызывается из <see cref="DropZone"/> при успешном IDropHandler.OnDrop.</summary>
+    internal void MarkDropAccepted()
+    {
+        dropAccepted = true;
     }
 }

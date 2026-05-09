@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -10,13 +11,17 @@ public class CompilerManager : MonoBehaviour
     [SerializeField] private Transform content; // Scroll View/Viewport/Content
     [SerializeField] private Compiler compiler;
     private int CommandCounter = 1;
+    private int HolderCounter = 1;
 
     private string DynamicScriptStart = $@"
 using UnityEngine;
 public class DynamicScript
 {{
     public void Run()
-    {{";
+    {{
+        object x = null;
+        
+";
 
     private string DynamicScriptEnd = $@"
     }}
@@ -24,18 +29,88 @@ public class DynamicScript
 
     public GameObject VariableCommandPrefab; // Ссылка на префаб (перетащите в инспектор)
     public Transform spawnParent;
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
-    public void SpawnCommand(string type){
-        if (type == "VariableCommand"){
-            SpawnVariableCommand();
-        }
+    public GameObject PrintCommandPrefab;
 
+    /// <summary>Имена Holder с последнего <see cref="RunCode"/> (<see cref="GetHolderNamesSorted"/>).</summary>
+    public string[] LastHolderNamesOrdered { get; private set; }
+
+    /// <summary>Спавн по типу команды.</summary>
+    public void SpawnCommand(CompilerCommandType commandType)
+    {
+        switch (commandType)
+        {
+            case CompilerCommandType.VariableCommand:
+                SpawnVariableCommand();
+                break;
+            case CompilerCommandType.PrintCommand:
+                SpawnPrintCommand();
+                break;
+            default:
+                Debug.LogWarning($"CompilerManager: не обработан {nameof(CompilerCommandType)}.{commandType}");
+                break;
+        }
+    }
+
+    /// <summary>Совместимость со вызовами по строке.</summary>
+    public void SpawnCommand(string type)
+    {
+        if (Enum.TryParse(type, ignoreCase: true, out CompilerCommandType parsed))
+            SpawnCommand(parsed);
+        else
+            Debug.LogWarning($"CompilerManager: неизвестный тип команды «{type}».");
     }
     public void SpawnVariableCommand()
     {
-        var go = Instantiate(VariableCommandPrefab, spawnParent);
+        if (VariableCommandPrefab == null)
+        {
+            Debug.LogError(
+                "CompilerManager: VariableCommandPrefab не назначен. Перетащите префаб команды в поле VariableCommandPrefab на объекте с CompilerManager.");
+            return;
+        }
+
+        GameObject go;
+        if (spawnParent != null)
+            go = Instantiate(VariableCommandPrefab, spawnParent);
+        else
+        {
+            Debug.LogWarning("CompilerManager: spawnParent не задан — экземпляр создан без родителя.");
+            go = Instantiate(VariableCommandPrefab);
+        }
+
         CommandCounter++;
         go.name = $"VariableCommand_{CommandCounter}";
+    }
+
+    public void SpawnPrintCommand()
+    {
+        if (PrintCommandPrefab == null)
+        {
+            Debug.LogError(
+                "CompilerManager: PrintCommandPrefab не назначен. Перетащите префаб команды в поле PrintCommandPrefab на объекте с CompilerManager.");
+            return;
+        }
+
+        GameObject go;
+        if (spawnParent != null)
+            go = Instantiate(PrintCommandPrefab, spawnParent);
+        else
+        {
+            Debug.LogWarning("CompilerManager: spawnParent не задан — экземпляр создан без родителя.");
+            go = Instantiate(PrintCommandPrefab);
+        }
+
+        CommandCounter++;
+        go.name = $"PrintCommand_{CommandCounter}";
+    }
+
+    /// <summary>
+    /// Следующее имя для нового слота Holder — по тому же правилу, что <see cref="SpawnVariableCommand"/>:
+    /// сначала инкремент счётчика, затем <c>Holder_{номер}</c>.
+    /// </summary>
+    public string TakeNextHolderName()
+    {
+        HolderCounter++;
+        return $"Holder_{HolderCounter}";
     }
 
     public void RunCode()
@@ -55,72 +130,118 @@ public class DynamicScript
             return;
         }
 
-        string[] names = LogAllNamesInContent();
-        foreach (string name in names)
+        // Holder, Holder_1, Holder_2, … — прямые дети content, по возрастанию номера.
+        LastHolderNamesOrdered = GetHolderNamesSorted();
+
+        var script = new StringBuilder();
+        script.Append(DynamicScriptStart);
+        script.Append(Environment.NewLine);
+
+        foreach (string holderName in LastHolderNamesOrdered)
         {
-            var command = FindDeep(content, name);
-            if (command == null) continue;
-            if (command.name.StartsWith("VariableCommand_"))
+            Transform holder = FindDeep(content, holderName);
+            if (holder == null)
             {
-                var typeRoot = command.Find("type");
-                var param = command.Find("param");
-                var operatorRoot = command.Find("operator");
-                var value = command.Find("value");
+                Debug.LogWarning($"CompilerManager: Holder '{holderName}' не найден под content.");
+                continue;
+            }
 
-                string typeText = ReadDropdownSelection(typeRoot);
-                string paramText = ReadUiText(param);
-                string valueText = ReadUiText(value);
-                string operatorText = ReadDropdownSelection(operatorRoot);
-
-                // Частый случай: в InputField/TMP_InputField не введён текст, и мы читаем плейсхолдер.
-                if (string.IsNullOrWhiteSpace(paramText) || LooksLikePlaceholder(param, paramText))
-                    continue;
-                if (string.IsNullOrWhiteSpace(valueText) || LooksLikePlaceholder(value, valueText))
-                    continue;
-
-                var variableName = SanitizeIdentifier(paramText);
-                if (string.IsNullOrWhiteSpace(variableName))
-                {
-                    Debug.LogError($"CompilerManager: некорректное имя переменной '{paramText}' (Command='{name}'). Разрешены буквы/цифры/_ и первый символ не цифра.");
-                    continue;
-                }
-
-                // Превращаем ввод в C# выражение. Если это не число/bool/null/литерал,
-                // считаем это строкой и добавляем кавычки/экранирование.
-                var expr = ToCSharpExpression(valueText);
-                if (string.IsNullOrWhiteSpace(expr))
-                {
-                    Debug.LogError($"CompilerManager: пустое значение (Command='{name}', var='{variableName}').");
-                    continue;
-                }
-
-                // Важно: это "eval". Не компилируй ввод из недоверенных источников.
-                string codeToCompile = BuildDynamicScript(variableName, expr, typeText, operatorText);
-
-                var asm = compiler.CompileCode(codeToCompile);
-                if (asm == null)
-                {
-                    Debug.LogError($"CompilerManager: компиляция не удалась (Command='{name}').");
-                    continue;
-                }
-
-                compiler.ExecuteCompiledCode(asm, "DynamicScript", "Run");
+            // Только непосредственные дочерние объекты — блоки команд.
+            foreach (Transform commandRoot in holder)
+            {
+                TryAppendCommandRunBody(script, commandRoot, holderName);
             }
         }
+
+        script.Append(DynamicScriptEnd);
+
+        string codeToCompile = script.ToString();
+        var asm = compiler.CompileCode(codeToCompile);
+        if (asm == null)
+        {
+            Debug.LogError("CompilerManager: компиляция объединённого DynamicScript не удалась.");
+            return;
+        }
+
+        compiler.ExecuteCompiledCode(asm, "DynamicScript", "Run");
     }
 
-    private static string BuildDynamicScript(string variableName, string expression, string variableType, string operatorV)
+    /// <summary>
+    /// Добавляет в тело <c>Run()</c> строки для одной команды (по имени корня в иерархии).
+    /// </summary>
+    private void TryAppendCommandRunBody(StringBuilder sb, Transform commandRoot, string holderName)
     {
-        return $@"
-using UnityEngine;
-public class DynamicScript
-{{
-    public void Run()
-    {{
-        {variableType} {variableName} {operatorV} {expression};
-        Debug.Log({variableName});
-    }}
-}}";
+        if (commandRoot == null) return;
+
+        string n = commandRoot.name;
+        if (n.StartsWith("VariableCommand_", StringComparison.Ordinal))
+        {
+            TryAppendVariableCommandBody(sb, commandRoot, holderName);
+            return;
+        }
+        else if (n.StartsWith("PrintCommand_", StringComparison.Ordinal))
+        {
+            TryAppendPrintCommandBody(sb, commandRoot, holderName);
+            return;
+        }   
+    }
+
+    /// <summary>Команда вывода: в UI поле <c>param</c> — имя уже объявленной переменной.</summary>
+    private void TryAppendPrintCommandBody(StringBuilder sb, Transform commandRoot, string holderName)
+    {
+        var param = commandRoot.Find("param");
+        string paramText = ReadUiText(param);
+
+        if (string.IsNullOrWhiteSpace(paramText) || LooksLikePlaceholder(param, paramText))
+            return;
+
+        var variableName = SanitizeIdentifier(paramText);
+        if (string.IsNullOrWhiteSpace(variableName))
+        {
+            Debug.LogError(
+                $"CompilerManager: некорректное имя переменной для вывода '{paramText}' (Holder='{holderName}', Command='{commandRoot.name}').");
+            return;
+        }
+
+        sb.AppendLine($"        Debug.Log({variableName});");
+        sb.AppendLine($"        x = {variableName};");
+    }
+
+    private void TryAppendVariableCommandBody(StringBuilder sb, Transform commandRoot, string holderName)
+    {
+        var typeRoot = commandRoot.Find("type");
+        var param = commandRoot.Find("param");
+        var operatorRoot = commandRoot.Find("operator");
+        var value = commandRoot.Find("value");
+
+        string typeText = ReadDropdownSelection(typeRoot);
+        string paramText = ReadUiText(param);
+        string valueText = ReadUiText(value);
+        string operatorText = ReadDropdownSelection(operatorRoot);
+
+        if (string.IsNullOrWhiteSpace(paramText) || LooksLikePlaceholder(param, paramText))
+            return;
+        if (string.IsNullOrWhiteSpace(valueText) || LooksLikePlaceholder(value, valueText))
+            return;
+
+        var variableName = SanitizeIdentifier(paramText);
+        if (string.IsNullOrWhiteSpace(variableName))
+        {
+            Debug.LogError(
+                $"CompilerManager: некорректное имя переменной '{paramText}' (Holder='{holderName}', Command='{commandRoot.name}'). Разрешены буквы/цифры/_ и первый символ не цифра.");
+            return;
+        }
+
+        var expr = ToCSharpExpression(valueText);
+        if (string.IsNullOrWhiteSpace(expr))
+        {
+            Debug.LogError(
+                $"CompilerManager: пустое значение (Holder='{holderName}', Command='{commandRoot.name}', var='{variableName}').");
+            return;
+        }
+
+        sb.AppendLine($"        {typeText} {variableName} {operatorText} {expr};");
+        sb.AppendLine($"        x = {variableName};");
     }
 
     private static string SanitizeIdentifier(string raw)
@@ -220,6 +341,55 @@ public class DynamicScript
                 names.Add(go.name);
         }
         return names.ToArray();
+    }
+
+    /// <summary>
+    /// Имена всех слотов Holder среди <b>прямых</b> детей <see cref="content"/>:
+    /// <c>Holder</c>, затем <c>Holder_1</c>, <c>Holder_2</c>, … по числовому суффиксу.
+    /// </summary>
+    public string[] GetHolderNamesSorted()
+    {
+        if (content == null)
+            return Array.Empty<string>();
+
+        var list = new List<string>();
+        foreach (Transform child in content)
+        {
+            if (child == null) continue;
+            string n = child.name;
+            if (IsHolderRootName(n))
+                list.Add(n);
+        }
+
+        list.Sort(CompareHolderNames);
+        return list.ToArray();
+    }
+
+    private static bool IsHolderRootName(string name)
+    {
+        if (string.IsNullOrEmpty(name))
+            return false;
+        if (string.Equals(name, "Holder", StringComparison.OrdinalIgnoreCase))
+            return true;
+        return Regex.IsMatch(name, @"^Holder_\d+$", RegexOptions.IgnoreCase);
+    }
+
+    /// <summary>Порядок: голый Holder первым, затем Holder_0, Holder_1, … по числу.</summary>
+    private static int CompareHolderNames(string a, string b)
+    {
+        return HolderSortKey(a).CompareTo(HolderSortKey(b));
+    }
+
+    private static int HolderSortKey(string name)
+    {
+        if (string.Equals(name, "Holder", StringComparison.OrdinalIgnoreCase))
+            return -1;
+
+        var m = Regex.Match(name, @"^Holder_(\d+)$", RegexOptions.IgnoreCase);
+        if (m.Success && int.TryParse(m.Groups[1].Value, out int n))
+            return n;
+
+        return int.MaxValue;
     }
 
     private static Transform FindDeep(Transform root, string exactName)

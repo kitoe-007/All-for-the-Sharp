@@ -3,7 +3,9 @@ using UnityEngine;
 public class CommandSpawn : MonoBehaviour
 {
     [SerializeField] private CompilerManager compilerManager;
-    [SerializeField] private string type;
+    [SerializeField] private CompilerCommandType commandType;
+
+    public CompilerCommandType CommandKind => commandType;
 
     void Awake()
     {
@@ -13,6 +15,6 @@ public class CommandSpawn : MonoBehaviour
 
     public void Spawn()
     {
-        compilerManager?.SpawnCommand(type);
+        compilerManager?.SpawnCommand(commandType);
     }
 }
