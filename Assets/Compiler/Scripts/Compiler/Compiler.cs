@@ -38,15 +38,15 @@ public class DynamicScript
         }
     }
 
-    private Assembly CompileCode(string sourceCode)
+    // Roslyn компиляция требует набора ссылок (MetadataReference).
+    // В Unity они уже загружены в AppDomain; собираем ссылки из Location.
+    // Важно: некоторые сборки могут не иметь Location или быть динамическими — их пропускаем.
+    public Assembly CompileCode(string sourceCode)
     {
-        // Создаём синтаксическое дерево из кода
         SyntaxTree syntaxTree = CSharpSyntaxTree.ParseText(sourceCode);
 
-        // Имя сборки
         string assemblyName = "DynamicAssembly_" + Guid.NewGuid().ToString("N");
 
-        // Собираем ссылки на все сборки, загруженные в текущий домен
         var references = new List<MetadataReference>();
         foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
         {
@@ -55,7 +55,6 @@ public class DynamicScript
                 try
                 {
                     references.Add(MetadataReference.CreateFromFile(assembly.Location));
-                    Debug.Log($"Добавлена ссылка на: {assembly.GetName().Name}");
                 }
                 catch (Exception ex)
                 {
@@ -64,21 +63,18 @@ public class DynamicScript
             }
         }
 
-        // Параметры компиляции
         CSharpCompilation compilation = CSharpCompilation.Create(
             assemblyName,
             new[] { syntaxTree },
             references,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
-        // Компилируем в поток памяти
         using (var ms = new MemoryStream())
         {
             EmitResult result = compilation.Emit(ms);
 
             if (!result.Success)
             {
-                // Выводим ошибки компиляции
                 IEnumerable<Diagnostic> failures = result.Diagnostics.Where(diagnostic =>
                     diagnostic.IsWarningAsError ||
                     diagnostic.Severity == DiagnosticSeverity.Error);
@@ -89,42 +85,40 @@ public class DynamicScript
                 }
                 return null;
             }
-            else
-            {
-                ms.Seek(0, SeekOrigin.Begin);
-                byte[] assemblyBytes = ms.ToArray();
-                return Assembly.Load(assemblyBytes);
-            }
+
+            ms.Seek(0, SeekOrigin.Begin);
+            byte[] assemblyBytes = ms.ToArray();
+            return Assembly.Load(assemblyBytes);
         }
     }
 
-    private void ExecuteCompiledCode(Assembly assembly)
+    public void ExecuteCompiledCode(Assembly assembly, string typeName = "DynamicScript", string methodName = "Run")
     {
         try
         {
-            // Ищем класс DynamicScript (как в нашем примере кода)
-            Type scriptType = assembly.GetType("DynamicScript");
+            Type scriptType = assembly.GetType(typeName);
             if (scriptType != null)
             {
                 object scriptInstance = Activator.CreateInstance(scriptType);
-                MethodInfo runMethod = scriptType.GetMethod("Run");
+                MethodInfo runMethod = scriptType.GetMethod(methodName);
                 if (runMethod != null)
                 {
                     runMethod.Invoke(scriptInstance, null);
                 }
                 else
                 {
-                    Debug.LogError("Метод Run не найден в классе DynamicScript");
+                    Debug.LogError($"Метод {methodName} не найден в классе {typeName}");
                 }
             }
             else
             {
-                Debug.LogError("Класс DynamicScript не найден в сборке");
+                Debug.LogError($"Класс {typeName} не найден в сборке");
             }
         }
         catch (Exception ex)
         {
-            Debug.LogError($"Ошибка при выполнении кода: {ex.Message}");
+            // Внутреннее исключение часто содержит первопричину (например, ошибка в Run()).
+            Debug.LogError($"Ошибка при выполнении кода: {ex.InnerException?.Message ?? ex.Message}");
         }
     }
 }
