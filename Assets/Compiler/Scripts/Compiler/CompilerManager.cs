@@ -9,7 +9,7 @@ public class CompilerManager : MonoBehaviour
 {
     [SerializeField] private Transform content; // Scroll View/Viewport/Content
     [SerializeField] private Compiler compiler;
-    private int variableCommandCounter = 1;
+    private int CommandCounter = 1;
 
     private string DynamicScriptStart = $@"
 using UnityEngine;
@@ -25,11 +25,17 @@ public class DynamicScript
     public GameObject VariableCommandPrefab; // Ссылка на префаб (перетащите в инспектор)
     public Transform spawnParent;
     // Start is called once before the first execution of Update after the MonoBehaviour is created
+    public void SpawnCommand(string type){
+        if (type == "VariableCommand"){
+            SpawnVariableCommand();
+        }
+
+    }
     public void SpawnVariableCommand()
     {
         var go = Instantiate(VariableCommandPrefab, spawnParent);
-        variableCommandCounter++;
-        go.name = $"VariableCommand_{variableCommandCounter}";
+        CommandCounter++;
+        go.name = $"VariableCommand_{CommandCounter}";
     }
 
     public void RunCode()

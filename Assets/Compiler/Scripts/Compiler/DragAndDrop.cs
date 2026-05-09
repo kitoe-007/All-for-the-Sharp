@@ -5,6 +5,9 @@ public class DragAndDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndD
 {
     private RectTransform rectTransform;
     private CanvasGroup canvasGroup;
+    private Canvas canvas;
+    private RectTransform parentRectTransform;
+    private Vector2 dragOffset;
 
     [SerializeField] private CompilerManager compilerManager;
     [SerializeField] private GameObject prefab;
@@ -16,13 +19,15 @@ public class DragAndDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndD
     {
         rectTransform = GetComponent<RectTransform>();
         canvasGroup = GetComponent<CanvasGroup>();
+        canvas = GetComponentInParent<Canvas>();
+        parentRectTransform = rectTransform.parent as RectTransform;
         if (canvasGroup == null)
             canvasGroup = gameObject.AddComponent<CanvasGroup>();
 
         // Если ссылку не задали в инспекторе, пробуем найти CompilerManager в сцене
         if (compilerManager == null)
         {
-            compilerManager = FindObjectOfType<CompilerManager>();
+            compilerManager = FindFirstObjectByType<CompilerManager>();
             if (compilerManager == null)
             {
                 Debug.LogError("DragAndDrop: не найден объект с компонентом CompilerManager в сцене");
@@ -37,6 +42,19 @@ public class DragAndDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndD
 
         canvasGroup.alpha = 0.6f;
         canvasGroup.blocksRaycasts = false; // чтобы луч проходил сквозь объект
+
+        // Для Screen Space Overlay (и в целом для UI) считаем смещение,
+        // чтобы элемент не "прыгал" и чтобы курсор совпадал с позицией перетаскивания.
+        if (parentRectTransform != null &&
+            RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                parentRectTransform,
+                eventData.position,
+                eventData.pressEventCamera,
+                out var localPointerPos))
+        {
+            dragOffset = rectTransform.anchoredPosition - localPointerPos;
+        }
+
         if (compilerManager != null)
             {
                 compilerManager.SpawnVariableCommand();
@@ -45,7 +63,17 @@ public class DragAndDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndD
 
     public void OnDrag(PointerEventData eventData)
     {
-        rectTransform.anchoredPosition += eventData.delta;
+        if (parentRectTransform == null)
+            return;
+
+        if (RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                parentRectTransform,
+                eventData.position,
+                eventData.pressEventCamera,
+                out var localPointerPos))
+        {
+            rectTransform.anchoredPosition = localPointerPos + dragOffset;
+        }
     }
 
     public void OnEndDrag(PointerEventData eventData)
