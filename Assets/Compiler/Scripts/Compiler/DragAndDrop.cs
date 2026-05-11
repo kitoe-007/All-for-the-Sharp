@@ -49,13 +49,20 @@ public class DragAndDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndD
 
     public void OnBeginDrag(PointerEventData eventData)
     {
+        // Вынести под root Canvas, иначе RectMask2D у Scroll View палитры обрезает превью при перетаскивании.
+        var rootCanvas = GetComponentInParent<Canvas>()?.rootCanvas;
+        if (rootCanvas != null && rectTransform != null)
+        {
+            rectTransform.SetParent(rootCanvas.transform, worldPositionStays: true);
+            rectTransform.SetAsLastSibling();
+        }
+
         parentRectTransform = rectTransform.parent as RectTransform;
 
         canvasGroup.alpha = 0.6f;
         canvasGroup.blocksRaycasts = false; // чтобы луч проходил сквозь объект
 
-        // Для Screen Space Overlay (и в целом для UI) считаем смещение,
-        // чтобы элемент не "прыгал" и чтобы курсор совпадал с позицией перетаскивания.
+        // Смещение считаем уже в координатах актуального родителя (после переноса на canvas).
         if (parentRectTransform != null &&
             RectTransformUtility.ScreenPointToLocalPointInRectangle(
                 parentRectTransform,
@@ -101,7 +108,12 @@ public class DragAndDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndD
     {
         yield return null;
         if (!dropAccepted)
+        {
+            // Нельзя ждать конца кадра на этом объекте: Destroy остановит корутину до WaitForEndOfFrame.
+            if (compilerManager != null)
+                compilerManager.ScheduleTryCollapseRedundantEmptyHoldersAfterMissedDrop();
             Destroy(gameObject);
+        }
         else
             dropAccepted = false;
     }

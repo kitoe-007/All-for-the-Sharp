@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -13,13 +14,14 @@ public class CompilerManager : MonoBehaviour
     private int CommandCounter = 1;
     private int HolderCounter = 1;
 
+    public Transform ScrollContent => content;
+
     private string DynamicScriptStart = $@"
 using UnityEngine;
 public class DynamicScript
 {{
     public void Run()
     {{
-        object x = null;
         
 ";
 
@@ -28,8 +30,17 @@ public class DynamicScript
 }}";
 
     public GameObject VariableCommandPrefab; // Ссылка на префаб (перетащите в инспектор)
+    [Tooltip("Запасной родитель для клонов палитры, если Command Palette Scroll не задан. Должен быть Content палитры, не Viewport.")]
     public Transform spawnParent;
+    [Tooltip("Если задан — клоны при перетаскивании всегда создаются в его Content (имеет приоритет над spawn Parent).")]
+    [SerializeField] private ScrollRect commandPaletteScroll;
     public GameObject PrintCommandPrefab;
+    public GameObject IfConditionCommandPrefab;
+    public GameObject OpenBracketCommandPrefab;
+    public GameObject CloseBracketCommandPrefab;
+
+    [Tooltip("Вертикальный зазор между слотами Holder (как nextDropSpacingPixels у DropZone). Используется при сдвиге после удаления пустого слота.")]
+    [SerializeField] private float holderVerticalSpacingPixels = 75f;
 
     /// <summary>Имена Holder с последнего <see cref="RunCode"/> (<see cref="GetHolderNamesSorted"/>).</summary>
     public string[] LastHolderNamesOrdered { get; private set; }
@@ -45,6 +56,15 @@ public class DynamicScript
             case CompilerCommandType.PrintCommand:
                 SpawnPrintCommand();
                 break;
+            case CompilerCommandType.IfConditionCommand:
+                SpawnIfConditionCommand();
+                break;
+            case CompilerCommandType.OpenBracketCommand:
+                SpawnOpenBracketCommand();
+                break;
+            case CompilerCommandType.CloseBracketCommand:
+                SpawnCloseBracketCommand();
+                break;
             default:
                 Debug.LogWarning($"CompilerManager: не обработан {nameof(CompilerCommandType)}.{commandType}");
                 break;
@@ -59,6 +79,52 @@ public class DynamicScript
         else
             Debug.LogWarning($"CompilerManager: неизвестный тип команды «{type}».");
     }
+    /// <summary>
+    /// Родитель для клонов при StartDrag: сначала <see cref="commandPaletteScroll"/>.content (если Scroll задан),
+    /// иначе <see cref="spawnParent"/> — чтобы старый spawn Parent не перетягивал клоны мимо палитры.
+    /// </summary>
+    public Transform GetCommandSpawnParent()
+    {
+        if (commandPaletteScroll != null && commandPaletteScroll.content != null)
+            return commandPaletteScroll.content;
+        return spawnParent;
+    }
+
+    private void PlaceSpawnedCommandInPaletteList(GameObject go, Transform parent)
+    {
+        if (go == null || parent == null)
+            return;
+        go.transform.SetAsLastSibling();
+
+        // Не трогаем якоря/LayoutElement у клона — это ломает VerticalLayoutGroup (всё в одну кучу).
+        // Достаточно отложенно пересобрать Content, когда rect родителя уже посчитан.
+        if (parent is RectTransform contentRt)
+            StartCoroutine(CoRebuildScrollContentLayoutDeferred(contentRt));
+    }
+
+    private IEnumerator CoRebuildScrollContentLayoutDeferred(RectTransform content)
+    {
+        yield return null;
+        if (content == null)
+            yield break;
+        Canvas.ForceUpdateCanvases();
+        LayoutRebuilder.ForceRebuildLayoutImmediate(content);
+    }
+
+    private void RefreshCommandPaletteLayoutIfNeeded(Transform instantiatedParent)
+    {
+        if (instantiatedParent == null)
+            return;
+        if (commandPaletteScroll == null || commandPaletteScroll.content == null)
+            return;
+        if (instantiatedParent != commandPaletteScroll.content)
+            return;
+
+        Canvas.ForceUpdateCanvases();
+        if (commandPaletteScroll.content is RectTransform crt)
+            LayoutRebuilder.ForceRebuildLayoutImmediate(crt);
+    }
+
     public void SpawnVariableCommand()
     {
         if (VariableCommandPrefab == null)
@@ -68,17 +134,18 @@ public class DynamicScript
             return;
         }
 
-        GameObject go;
-        if (spawnParent != null)
-            go = Instantiate(VariableCommandPrefab, spawnParent);
-        else
-        {
-            Debug.LogWarning("CompilerManager: spawnParent не задан — экземпляр создан без родителя.");
-            go = Instantiate(VariableCommandPrefab);
-        }
+        Transform parent = GetCommandSpawnParent();
+        GameObject go = parent != null
+            ? Instantiate(VariableCommandPrefab, parent)
+            : Instantiate(VariableCommandPrefab);
+        if (parent == null)
+            Debug.LogWarning(
+                "CompilerManager: не задан Command Palette Scroll и spawn Parent — экземпляр создан без родителя.");
 
         CommandCounter++;
         go.name = $"VariableCommand_{CommandCounter}";
+        PlaceSpawnedCommandInPaletteList(go, parent);
+        RefreshCommandPaletteLayoutIfNeeded(parent);
     }
 
     public void SpawnPrintCommand()
@@ -90,17 +157,87 @@ public class DynamicScript
             return;
         }
 
-        GameObject go;
-        if (spawnParent != null)
-            go = Instantiate(PrintCommandPrefab, spawnParent);
-        else
-        {
-            Debug.LogWarning("CompilerManager: spawnParent не задан — экземпляр создан без родителя.");
-            go = Instantiate(PrintCommandPrefab);
-        }
+        Transform parent = GetCommandSpawnParent();
+        GameObject go = parent != null
+            ? Instantiate(PrintCommandPrefab, parent)
+            : Instantiate(PrintCommandPrefab);
+        if (parent == null)
+            Debug.LogWarning(
+                "CompilerManager: не задан Command Palette Scroll и spawn Parent — экземпляр создан без родителя.");
 
         CommandCounter++;
         go.name = $"PrintCommand_{CommandCounter}";
+        PlaceSpawnedCommandInPaletteList(go, parent);
+        RefreshCommandPaletteLayoutIfNeeded(parent);
+    }
+
+    public void SpawnIfConditionCommand()
+    {
+        if (IfConditionCommandPrefab == null)
+        {
+            Debug.LogError(
+                "CompilerManager: IfConditionCommandPrefab не назначен. Перетащите префаб в поле IfConditionCommandPrefab.");
+            return;
+        }
+
+        Transform parent = GetCommandSpawnParent();
+        GameObject go = parent != null
+            ? Instantiate(IfConditionCommandPrefab, parent)
+            : Instantiate(IfConditionCommandPrefab);
+        if (parent == null)
+            Debug.LogWarning(
+                "CompilerManager: не задан Command Palette Scroll и spawn Parent — экземпляр создан без родителя.");
+
+        CommandCounter++;
+        go.name = $"IfConditionCommand_{CommandCounter}";
+        PlaceSpawnedCommandInPaletteList(go, parent);
+        RefreshCommandPaletteLayoutIfNeeded(parent);
+    }
+
+    public void SpawnOpenBracketCommand()
+    {
+        if (OpenBracketCommandPrefab == null)
+        {
+            Debug.LogError(
+                "CompilerManager: OpenBracketCommandPrefab не назначен. Перетащите префаб в поле OpenBracketCommandPrefab.");
+            return;
+        }
+
+        Transform parent = GetCommandSpawnParent();
+        GameObject go = parent != null
+            ? Instantiate(OpenBracketCommandPrefab, parent)
+            : Instantiate(OpenBracketCommandPrefab);
+        if (parent == null)
+            Debug.LogWarning(
+                "CompilerManager: не задан Command Palette Scroll и spawn Parent — экземпляр создан без родителя.");
+
+        CommandCounter++;
+        go.name = $"OpenBracketCommand_{CommandCounter}";
+        PlaceSpawnedCommandInPaletteList(go, parent);
+        RefreshCommandPaletteLayoutIfNeeded(parent);
+    }
+
+    public void SpawnCloseBracketCommand()
+    {
+        if (CloseBracketCommandPrefab == null)
+        {
+            Debug.LogError(
+                "CompilerManager: CloseBracketCommandPrefab не назначен. Перетащите префаб в поле CloseBracketCommandPrefab.");
+            return;
+        }
+
+        Transform parent = GetCommandSpawnParent();
+        GameObject go = parent != null
+            ? Instantiate(CloseBracketCommandPrefab, parent)
+            : Instantiate(CloseBracketCommandPrefab);
+        if (parent == null)
+            Debug.LogWarning(
+                "CompilerManager: не задан Command Palette Scroll и spawn Parent — экземпляр создан без родителя.");
+
+        CommandCounter++;
+        go.name = $"CloseBracketCommand_{CommandCounter}";
+        PlaceSpawnedCommandInPaletteList(go, parent);
+        RefreshCommandPaletteLayoutIfNeeded(parent);
     }
 
     /// <summary>
@@ -111,6 +248,134 @@ public class DynamicScript
     {
         HolderCounter++;
         return $"Holder_{HolderCounter}";
+    }
+
+    /// <summary>
+    /// Принудительно пересчитывает layout для ScrollView Content, чтобы ScrollRect увидел новые элементы.
+    /// Вызывайте после Instantiate/изменения иерархии UI под <see cref="content"/>.
+    /// </summary>
+    public void ForceUpdateScrollContentLayout()
+    {
+        if (content == null)
+            return;
+
+        // Важно: сначала обновить canvases, затем пересобрать layout именно у content.
+        Canvas.ForceUpdateCanvases();
+        if (content is RectTransform rt)
+            LayoutRebuilder.ForceRebuildLayoutImmediate(rt);
+
+        // На всякий случай: если ScrollRect висит на родителе (типовая структура Scroll View),
+        // пересоберём и viewport/корень, чтобы обновились bounds.
+        var scroll = content.GetComponentInParent<ScrollRect>();
+        if (scroll != null)
+        {
+            if (scroll.viewport != null)
+                LayoutRebuilder.ForceRebuildLayoutImmediate(scroll.viewport);
+            if (scroll.transform is RectTransform srt)
+                LayoutRebuilder.ForceRebuildLayoutImmediate(srt);
+        }
+    }
+
+    /// <summary>
+    /// Корутину нельзя продолжать на перетаскиваемом объекте после <c>Destroy</c> — она обрывается.
+    /// Сжатие пустых Holder выполняется здесь, на живом <see cref="MonoBehaviour"/>.
+    /// </summary>
+    public void ScheduleTryCollapseRedundantEmptyHoldersAfterMissedDrop()
+    {
+        StartCoroutine(CollapseRedundantEmptyHoldersAfterEndOfFrameCoroutine());
+    }
+
+    private IEnumerator CollapseRedundantEmptyHoldersAfterEndOfFrameCoroutine()
+    {
+        yield return new WaitForEndOfFrame();
+        TryCollapseRedundantEmptyHoldersAfterCommandMissedDrop();
+    }
+
+    /// <summary>
+    /// После сброса команды мимо Holder (объект команды уничтожен): если среди прямых детей
+    /// <see cref="content"/> больше одного пустого Holder, удаляет пустой с минимальным «номером»
+    /// в порядке <see cref="GetHolderNamesSorted"/> и сдвигает все следующие слоты вверх на
+    /// высоту удалённого + <see cref="holderVerticalSpacingPixels"/>.
+    /// </summary>
+    public void TryCollapseRedundantEmptyHoldersAfterCommandMissedDrop()
+    {
+        if (content == null)
+            return;
+
+        var holdersOrdered = new List<Transform>();
+        foreach (Transform child in content)
+        {
+            if (child != null && IsHolderRootName(child.name))
+                holdersOrdered.Add(child);
+        }
+
+        holdersOrdered.Sort((a, b) => CompareHolderNames(a.name, b.name));
+
+        var emptyHolders = new List<Transform>();
+        foreach (Transform h in holdersOrdered)
+        {
+            if (IsHolderWithoutCommand(h))
+                emptyHolders.Add(h);
+        }
+
+        if (emptyHolders.Count <= 1)
+            return;
+
+        emptyHolders.Sort((a, b) => CompareHolderNames(a.name, b.name));
+        Transform toDestroy = emptyHolders[0];
+        int removeIndex = holdersOrdered.IndexOf(toDestroy);
+        if (removeIndex < 0)
+            return;
+
+        var removeRt = toDestroy as RectTransform;
+        float slotStep = GetHolderSlotVerticalStep(removeRt);
+
+        UnityEngine.Object.Destroy(toDestroy.gameObject);
+
+        for (int i = removeIndex + 1; i < holdersOrdered.Count; i++)
+        {
+            Transform t = holdersOrdered[i];
+            if (t == null)
+                continue;
+            if (t is RectTransform rt)
+                rt.anchoredPosition += Vector2.up * slotStep;
+        }
+
+        ForceUpdateScrollContentLayout();
+    }
+
+    /// <summary>
+    /// Пустой слот: под Holder нет блока команды (VariableCommand / PrintCommand / IfConditionCommand / …),
+    /// в том числе если команда вложена под DropZone, а не прямой ребёнок Holder.
+    /// </summary>
+    private static bool IsHolderWithoutCommand(Transform holder)
+    {
+        if (holder == null)
+            return true;
+        foreach (Transform t in holder.GetComponentsInChildren<Transform>(true))
+        {
+            if (t == holder)
+                continue;
+            string n = t.name;
+            if (n.StartsWith("VariableCommand", StringComparison.Ordinal) ||
+                n.StartsWith("PrintCommand", StringComparison.Ordinal) ||
+                n.StartsWith("IfConditionCommand", StringComparison.Ordinal) ||
+                n.StartsWith("OpenBracketCommand", StringComparison.Ordinal) ||
+                n.StartsWith("CloseBracketCommand", StringComparison.Ordinal))
+                return false;
+        }
+        return true;
+    }
+
+    private float GetHolderSlotVerticalStep(RectTransform holderRt)
+    {
+        float h = 0f;
+        if (holderRt != null)
+        {
+            h = holderRt.rect.height > 0f ? holderRt.rect.height : Mathf.Abs(holderRt.sizeDelta.y);
+        }
+
+        return h + holderVerticalSpacingPixels;
     }
 
     public void RunCode()
@@ -156,6 +421,7 @@ public class DynamicScript
         script.Append(DynamicScriptEnd);
 
         string codeToCompile = script.ToString();
+        Debug.Log($"CompilerManager: сгенерированный DynamicScript:\n{codeToCompile}");
         var asm = compiler.CompileCode(codeToCompile);
         if (asm == null)
         {
@@ -174,19 +440,37 @@ public class DynamicScript
         if (commandRoot == null) return;
 
         string n = commandRoot.name;
-        if (n.StartsWith("VariableCommand_", StringComparison.Ordinal))
+        if (n.StartsWith("VariableCommand", StringComparison.Ordinal))
         {
             TryAppendVariableCommandBody(sb, commandRoot, holderName);
             return;
         }
-        else if (n.StartsWith("PrintCommand_", StringComparison.Ordinal))
+        else if (n.StartsWith("PrintCommand", StringComparison.Ordinal))
         {
             TryAppendPrintCommandBody(sb, commandRoot, holderName);
             return;
-        }   
+        }
+        else if (n.StartsWith("IfConditionCommand", StringComparison.Ordinal))
+        {
+            TryAppendIfConditionCommandBody(sb, commandRoot, holderName);
+            return;
+        }
+        else if (n.StartsWith("OpenBracketCommand", StringComparison.Ordinal))
+        {
+            sb.AppendLine("        {");
+            return;
+        }
+        else if (n.StartsWith("CloseBracketCommand", StringComparison.Ordinal))
+        {
+            sb.AppendLine("        }");
+            return;
+        }
     }
 
-    /// <summary>Команда вывода: в UI поле <c>param</c> — имя уже объявленной переменной.</summary>
+    /// <summary>
+    /// Команда вывода: в UI поле <c>param</c> — имя переменной (как в C#) или литерал/выражение,
+    /// по тем же правилам, что поле значения у VariableCommand (<see cref="ToCSharpExpression"/>).
+    /// </summary>
     private void TryAppendPrintCommandBody(StringBuilder sb, Transform commandRoot, string holderName)
     {
         var param = commandRoot.Find("param");
@@ -196,15 +480,50 @@ public class DynamicScript
             return;
 
         var variableName = SanitizeIdentifier(paramText);
-        if (string.IsNullOrWhiteSpace(variableName))
+        if (!string.IsNullOrWhiteSpace(variableName))
         {
-            Debug.LogError(
-                $"CompilerManager: некорректное имя переменной для вывода '{paramText}' (Holder='{holderName}', Command='{commandRoot.name}').");
+            sb.AppendLine($"        Debug.Log({variableName});");
             return;
         }
 
-        sb.AppendLine($"        Debug.Log({variableName});");
-        sb.AppendLine($"        x = {variableName};");
+        var expr = ToCSharpExpression(paramText);
+        if (string.IsNullOrWhiteSpace(expr))
+        {
+            Debug.LogError(
+                $"CompilerManager: не удалось преобразовать вывод '{paramText}' в выражение C# (Holder='{holderName}', Command='{commandRoot.name}').");
+            return;
+        }
+
+        sb.AppendLine($"        Debug.Log({expr});");
+    }
+
+    /// <summary>
+    /// Dropdown в <c>kind</c> / <c>type</c> / <c>if</c>: «if» и «else if» — условие в <c>condition</c> / <c>param</c>
+    /// (сырое C# в скобках); «else» — строка <c>else</c> без скобок, поле условия не используется.
+    /// </summary>
+    private void TryAppendIfConditionCommandBody(StringBuilder sb, Transform commandRoot, string holderName)
+    {
+        var kindRoot = commandRoot.Find("kind") ?? commandRoot.Find("type") ?? commandRoot.Find("if");
+        var conditionRoot = commandRoot.Find("condition") ?? commandRoot.Find("param");
+
+        string branchText = ReadDropdownSelection(kindRoot).Trim();
+        string conditionText = ReadUiText(conditionRoot);
+
+        bool isElseIf = branchText.IndexOf("else if", StringComparison.OrdinalIgnoreCase) >= 0;
+        bool isElse = !isElseIf && branchText.Equals("else", StringComparison.OrdinalIgnoreCase);
+
+        if (isElse)
+        {
+            sb.AppendLine("        else");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(conditionText) || LooksLikePlaceholder(conditionRoot, conditionText))
+            return;
+
+        string cond = conditionText.Trim();
+        string keyword = isElseIf ? "else if" : "if";
+        sb.AppendLine($"        {keyword} ({cond})");
     }
 
     private void TryAppendVariableCommandBody(StringBuilder sb, Transform commandRoot, string holderName)
@@ -241,7 +560,6 @@ public class DynamicScript
         }
 
         sb.AppendLine($"        {typeText} {variableName} {operatorText} {expr};");
-        sb.AppendLine($"        x = {variableName};");
     }
 
     private static string SanitizeIdentifier(string raw)

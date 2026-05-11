@@ -2139,7 +2139,7 @@ RectTransform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 5458616500517749241}
-  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
@@ -2169,7 +2169,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DragAndDrop
   compilerManager: {fileID: 0}
-  prefab: {fileID: 5458616500517749241}
+  commandType: 0
+  prefab: {fileID: 8677485937724143058, guid: 565260a14e9856d418c27cad80d7cedb, type: 3}
 --- !u!114 &-7178394067831869737
 MonoBehaviour:
   m_ObjectHideFlags: 0

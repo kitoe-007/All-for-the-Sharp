@@ -1,6 +1,9 @@
+using System;
+using System.Text.RegularExpressions;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.Serialization;
+using UnityEngine.UI;
 
 public class DropZone : MonoBehaviour, IDropHandler
 {
@@ -36,6 +39,9 @@ public class DropZone : MonoBehaviour, IDropHandler
 
         draggable.MarkDropAccepted();
 
+        int removedOtherCommands = RemoveOtherCommandsInThisSlot(eventData.pointerDrag);
+        bool alreadyChildOfThisDropZone = eventData.pointerDrag.transform.parent == transform;
+
         RectTransform dragRect = draggable.GetComponent<RectTransform>();
         if (dragRect != null)
         {
@@ -58,7 +64,11 @@ public class DropZone : MonoBehaviour, IDropHandler
         }
 
         Debug.Log($"{eventData.pointerDrag.name} dropped on {gameObject.name}");
-        CreateNew();
+
+        // Новый Holder под слотом — только первый дроп с «чужого» родителя на пустой слот.
+        // При замене команды или повторном сбросе на ту же DropZone слот не размножаем.
+        if (removedOtherCommands == 0 && !alreadyChildOfThisDropZone)
+            CreateNew();
     }
 
     public void CreateNew()
@@ -83,9 +93,27 @@ public class DropZone : MonoBehaviour, IDropHandler
         {
             var zoneRt = transform as RectTransform;
             var parentRt = transform.parent as RectTransform;
+            var scroll = GetComponentInParent<ScrollRect>();
+            var scrollContent = compilerManager != null ? compilerManager.ScrollContent as RectTransform : null;
+            if (scrollContent == null && scroll != null)
+                scrollContent = scroll.content;
 
             // Новый слот — сосед под текущей зоной (общий родитель), чтобы цепочка drop-зон росла вниз.
-            if (parentRt != null && zoneRt != null)
+            if (zoneRt != null && scrollContent != null)
+            {
+                // Ключевой момент: новый holder должен быть ребёнком ScrollRect.content,
+                // иначе scroll не увеличит content bounds и вниз "нечего" скроллить.
+                rect.SetParent(scrollContent, false);
+                rect.anchorMin = zoneRt.anchorMin;
+                rect.anchorMax = zoneRt.anchorMax;
+                rect.pivot = zoneRt.pivot;
+                rect.sizeDelta = zoneRt.sizeDelta;
+                rect.localRotation = Quaternion.identity;
+                rect.localScale = Vector3.one;
+                float h = zoneRt.rect.height > 0f ? zoneRt.rect.height : Mathf.Abs(zoneRt.sizeDelta.y);
+                rect.anchoredPosition = zoneRt.anchoredPosition + Vector2.down * (h + nextDropSpacingPixels);
+            }
+            else if (parentRt != null && zoneRt != null)
             {
                 rect.SetParent(parentRt, false);
                 rect.anchorMin = zoneRt.anchorMin;
@@ -111,6 +139,18 @@ public class DropZone : MonoBehaviour, IDropHandler
             Debug.Log(
                 $"Spawned UI '{instance.name}' active={instance.activeInHierarchy} " +
                 $"anchoredPos={rect.anchoredPosition} sizeDelta={rect.sizeDelta} parent='{rect.transform.parent?.name}'");
+
+            // После добавления/перемещения UI элементов ScrollRect часто не успевает пересчитать bounds/content size.
+            // Принудительно пересобираем layout, чтобы можно было докрутить до новых holder'ов.
+            compilerManager?.ForceUpdateScrollContentLayout();
+
+            // Если это ScrollView — докручиваем вниз.
+            if (scroll != null)
+            {
+                Canvas.ForceUpdateCanvases();
+                scroll.StopMovement();
+                scroll.verticalNormalizedPosition = 0f;
+            }
         }
         else
         {
@@ -121,6 +161,69 @@ public class DropZone : MonoBehaviour, IDropHandler
             Debug.Log(
                 $"Spawned GO '{instance.name}' active={instance.activeInHierarchy} pos={instance.transform.position}");
         }
+    }
+
+    /// <summary>
+    /// Перед приёмом новой команды удаляет прежнюю в этом слоте: прямые дети Holder с
+    /// <see cref="DragAndDrop"/> и прямые дети этой DropZone (кроме перетаскиваемого объекта).
+    /// </summary>
+    /// <returns>Сколько других команд удалено (для решения, спавнить ли новый Holder).</returns>
+    private int RemoveOtherCommandsInThisSlot(GameObject incomingDrag)
+    {
+        if (incomingDrag == null)
+            return 0;
+
+        int removed = 0;
+
+        Transform holder = FindHolderAncestor(transform);
+        if (holder != null)
+        {
+            for (int i = holder.childCount - 1; i >= 0; i--)
+            {
+                Transform c = holder.GetChild(i);
+                if (c.gameObject == incomingDrag)
+                    continue;
+                if (c.GetComponent<DragAndDrop>() != null)
+                {
+                    Destroy(c.gameObject);
+                    removed++;
+                }
+            }
+        }
+
+        for (int i = transform.childCount - 1; i >= 0; i--)
+        {
+            Transform c = transform.GetChild(i);
+            if (c.gameObject == incomingDrag)
+                continue;
+            if (c.GetComponent<DragAndDrop>() != null)
+            {
+                Destroy(c.gameObject);
+                removed++;
+            }
+        }
+
+        return removed;
+    }
+
+    private static Transform FindHolderAncestor(Transform start)
+    {
+        for (Transform t = start; t != null; t = t.parent)
+        {
+            if (IsHolderRootName(t.name))
+                return t;
+        }
+
+        return null;
+    }
+
+    private static bool IsHolderRootName(string name)
+    {
+        if (string.IsNullOrEmpty(name))
+            return false;
+        if (string.Equals(name, "Holder", StringComparison.OrdinalIgnoreCase))
+            return true;
+        return Regex.IsMatch(name, @"^Holder_\d+$", RegexOptions.IgnoreCase);
     }
 
     /// <summary>

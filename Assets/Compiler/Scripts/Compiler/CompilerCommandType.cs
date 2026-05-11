@@ -5,4 +5,7 @@ public enum CompilerCommandType
 {
     VariableCommand = 0,
     PrintCommand = 1,
+    IfConditionCommand = 2,
+    OpenBracketCommand = 3,
+    CloseBracketCommand = 4,
 }
