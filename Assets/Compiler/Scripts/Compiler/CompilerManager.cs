@@ -30,40 +30,117 @@ public class DynamicScript
 }}";
 
     public GameObject VariableCommandPrefab; // Ссылка на префаб (перетащите в инспектор)
-    [Tooltip("Запасной родитель для клонов палитры, если Command Palette Scroll не задан. Должен быть Content палитры, не Viewport.")]
     public Transform spawnParent;
-    [Tooltip("Если задан — клоны при перетаскивании всегда создаются в его Content (имеет приоритет над spawn Parent).")]
-    [SerializeField] private ScrollRect commandPaletteScroll;
+
+    [Tooltip("Если spawn Parent — RectTransform: выровнять клон по левому краю и сдвинуть по Y (см. поля ниже). Выключи, если на родителе Vertical Layout Group сам расставляет детей.")]
+    [SerializeField] private bool applySpawnRectLayout = true;
+    [Tooltip("Отступ от левого края контейнера (anchored X).")]
+    [SerializeField] private float spawnLayoutLeftPadding = 8f;
+    [Tooltip("Смещение по Y от верхнего края контейнера (в координатах UI: вниз — отрицательные значения).")]
+    [SerializeField] private float spawnLayoutTopOffset = 0f;
+    [Tooltip("Шаг по Y между строками (индекс × шаг). 0 — взять высоту самого блока (или 48), чтобы клоны при drag не схлопывались в одну точку.")]
+    [SerializeField] private float spawnLayoutRowStep = 0f;
+
     public GameObject PrintCommandPrefab;
     public GameObject IfConditionCommandPrefab;
     public GameObject OpenBracketCommandPrefab;
     public GameObject CloseBracketCommandPrefab;
+    public GameObject ForCommandPrefab;
+    public GameObject WhileCommandPrefab;
 
     [Tooltip("Вертикальный зазор между слотами Holder (как nextDropSpacingPixels у DropZone). Используется при сдвиге после удаления пустого слота.")]
     [SerializeField] private float holderVerticalSpacingPixels = 75f;
 
+    [Tooltip("При Start один раз создать в spawn Parent по экземпляру каждого типа команды (дополнительно к логике DragAndDrop).")]
+    [SerializeField] private bool spawnFullCommandPaletteOnStart = true;
+
+    [Tooltip("Перед SpawnFullCommandPalette удалить прямых детей spawn Parent, чьи имена похожи на блоки команд — иначе дубли, если команды уже лежат в сцене под Content.")]
+    [SerializeField] private bool clearSpawnParentCommandsBeforePaletteSpawn = true;
+
+    [Tooltip("При OnBeginDrag создавать клон команды. Если уже есть палитра при Start — обычно выключи: при Row Step 0 клоны накапливаются в одной точке.")]
+    [SerializeField] private bool spawnCommandCloneOnBeginDrag = false;
+
     /// <summary>Имена Holder с последнего <see cref="RunCode"/> (<see cref="GetHolderNamesSorted"/>).</summary>
     public string[] LastHolderNamesOrdered { get; private set; }
 
+    private void Start()
+    {
+        if (spawnFullCommandPaletteOnStart)
+            SpawnFullCommandPalette();
+    }
+
+    /// <summary>По одному вызову <see cref="SpawnCommand"/> для каждого значения <see cref="CompilerCommandType"/>.</summary>
+    public void SpawnFullCommandPalette()
+    {
+        if (spawnParent == null)
+        {
+            Debug.LogWarning("CompilerManager: spawn Parent не задан — стартовая палитра не создана.");
+            return;
+        }
+
+        if (clearSpawnParentCommandsBeforePaletteSpawn)
+            ClearExistingPaletteCommandRootsUnderSpawnParent();
+
+        foreach (CompilerCommandType t in Enum.GetValues(typeof(CompilerCommandType)))
+            SpawnCommand(t);
+    }
+
+    /// <summary>Прямые дети <see cref="spawnParent"/> с именами корней команд — как при старте из сцены + из SpawnFullCommandPalette.</summary>
+    private void ClearExistingPaletteCommandRootsUnderSpawnParent()
+    {
+        if (spawnParent == null)
+            return;
+        for (int i = spawnParent.childCount - 1; i >= 0; i--)
+        {
+            Transform c = spawnParent.GetChild(i);
+            if (c != null && IsPaletteCommandRootName(c.name))
+                DestroyImmediate(c.gameObject);
+        }
+    }
+
+    /// <summary>Имя корня блока команды в палитре / Holder (без вложенных детей).</summary>
+    private static bool IsPaletteCommandRootName(string name)
+    {
+        if (string.IsNullOrEmpty(name))
+            return false;
+        return name.StartsWith("VariableCommand", StringComparison.Ordinal) ||
+               name.StartsWith("PrintCommand", StringComparison.Ordinal) ||
+               name.StartsWith("IfConditionCommand", StringComparison.Ordinal) ||
+               name.StartsWith("OpenBracketCommand", StringComparison.Ordinal) ||
+               name.StartsWith("CloseBracketCommand", StringComparison.Ordinal) ||
+               name.StartsWith("ForCommand", StringComparison.Ordinal) ||
+               name.StartsWith("WhileCommand", StringComparison.Ordinal);
+    }
+
     /// <summary>Спавн по типу команды.</summary>
-    public void SpawnCommand(CompilerCommandType commandType)
+    /// <param name="paletteSiblingIndex">
+    /// Если ≥ 0 и родитель — <see cref="spawnParent"/>: вставить новый элемент на эту позицию в иерархии
+    /// (чтобы клон при драге из палитры оставался на месте исходного блока). Иначе — в конец списка.
+    /// </param>
+    public void SpawnCommand(CompilerCommandType commandType, int paletteSiblingIndex = -1)
     {
         switch (commandType)
         {
             case CompilerCommandType.VariableCommand:
-                SpawnVariableCommand();
+                SpawnVariableCommand(paletteSiblingIndex);
                 break;
             case CompilerCommandType.PrintCommand:
-                SpawnPrintCommand();
+                SpawnPrintCommand(paletteSiblingIndex);
                 break;
             case CompilerCommandType.IfConditionCommand:
-                SpawnIfConditionCommand();
+                SpawnIfConditionCommand(paletteSiblingIndex);
                 break;
             case CompilerCommandType.OpenBracketCommand:
-                SpawnOpenBracketCommand();
+                SpawnOpenBracketCommand(paletteSiblingIndex);
                 break;
             case CompilerCommandType.CloseBracketCommand:
-                SpawnCloseBracketCommand();
+                SpawnCloseBracketCommand(paletteSiblingIndex);
+                break;
+            case CompilerCommandType.ForCommand:
+                SpawnForCommand(paletteSiblingIndex);
+                break;
+            case CompilerCommandType.WhileCommand:
+                SpawnWhileCommand(paletteSiblingIndex);
                 break;
             default:
                 Debug.LogWarning($"CompilerManager: не обработан {nameof(CompilerCommandType)}.{commandType}");
@@ -79,53 +156,162 @@ public class DynamicScript
         else
             Debug.LogWarning($"CompilerManager: неизвестный тип команды «{type}».");
     }
+
     /// <summary>
-    /// Родитель для клонов при StartDrag: сначала <see cref="commandPaletteScroll"/>.content (если Scroll задан),
-    /// иначе <see cref="spawnParent"/> — чтобы старый spawn Parent не перетягивал клоны мимо палитры.
+    /// Если на <see cref="spawnParent"/> есть <see cref="LayoutGroup"/> — не используем ручные anchoredPosition
+    /// (они ломают Vertical/Horizontal layout). Иначе — только при включённом applySpawnRectLayout.
     /// </summary>
-    public Transform GetCommandSpawnParent()
+    private static bool SpawnParentHasUILayout(Transform parent)
     {
-        if (commandPaletteScroll != null && commandPaletteScroll.content != null)
-            return commandPaletteScroll.content;
-        return spawnParent;
+        return parent != null && parent.GetComponent<LayoutGroup>() != null;
     }
 
-    private void PlaceSpawnedCommandInPaletteList(GameObject go, Transform parent)
+    /// <summary>
+    /// Высота строки палитры: сначала соседи (уже с layout), затем сам блок, минимум 48.
+    /// Нужна при спавне в том же кадре, что и BeginDrag, когда у нового RectTransform ещё нулевой rect.
+    /// </summary>
+    private static float InferPaletteRowHeight(RectTransform parentRt, RectTransform blockRt)
     {
-        if (go == null || parent == null)
+        float maxOther = 0f;
+        for (int i = 0; i < parentRt.childCount; i++)
+        {
+            if (!(parentRt.GetChild(i) is RectTransform crt))
+                continue;
+            if (crt == blockRt)
+                continue;
+
+            float sh = crt.rect.height;
+            if (sh < 4f)
+                sh = Mathf.Abs(crt.sizeDelta.y);
+            if (crt.TryGetComponent<LayoutElement>(out var leo))
+                sh = Mathf.Max(sh, leo.preferredHeight, leo.minHeight);
+            maxOther = Mathf.Max(maxOther, sh);
+        }
+
+        float self = blockRt.rect.height;
+        if (self < 4f)
+            self = Mathf.Abs(blockRt.sizeDelta.y);
+        if (blockRt.TryGetComponent<LayoutElement>(out var les))
+            self = Mathf.Max(self, les.preferredHeight, les.minHeight);
+
+        return Mathf.Max(maxOther, self, 48f);
+    }
+
+    /// <summary>
+    /// Ручной вертикальный стек всех детей <paramref name="parentRt"/> (без LayoutGroup на родителе).
+    /// Пересчитывает весь столбец — чтобы клоны при драге не накапливались в одной точке.
+    /// </summary>
+    private void ReflowManualSpawnChildren(RectTransform parentRt)
+    {
+        if (parentRt == null || !applySpawnRectLayout)
             return;
-        go.transform.SetAsLastSibling();
 
-        // Не трогаем якоря/LayoutElement у клона — это ломает VerticalLayoutGroup (всё в одну кучу).
-        // Достаточно отложенно пересобрать Content, когда rect родителя уже посчитан.
-        if (parent is RectTransform contentRt)
-            StartCoroutine(CoRebuildScrollContentLayoutDeferred(contentRt));
+        Canvas.ForceUpdateCanvases();
+        LayoutRebuilder.ForceRebuildLayoutImmediate(parentRt);
+
+        float step = spawnLayoutRowStep;
+        if (step < 0.01f)
+        {
+            step = 48f;
+            for (int i = 0; i < parentRt.childCount; i++)
+            {
+                if (!(parentRt.GetChild(i) is RectTransform crt))
+                    continue;
+                float sh = crt.rect.height;
+                if (sh < 4f)
+                    sh = Mathf.Abs(crt.sizeDelta.y);
+                if (crt.TryGetComponent<LayoutElement>(out var le))
+                    sh = Mathf.Max(sh, le.preferredHeight, le.minHeight);
+                step = Mathf.Max(step, sh);
+            }
+        }
+
+        for (int i = 0; i < parentRt.childCount; i++)
+        {
+            if (!(parentRt.GetChild(i) is RectTransform crt))
+                continue;
+            crt.anchorMin = new Vector2(0f, 1f);
+            crt.anchorMax = new Vector2(0f, 1f);
+            crt.pivot = new Vector2(0f, 1f);
+            float y = spawnLayoutTopOffset - step * i;
+            crt.anchoredPosition = new Vector2(spawnLayoutLeftPadding, y);
+        }
     }
 
-    private IEnumerator CoRebuildScrollContentLayoutDeferred(RectTransform content)
+    /// <summary>
+    /// После Instantiate: либо отдаём раскладку <see cref="LayoutGroup"/> на родителе (типичный Content со Scroll),
+    /// либо вручную — левый верх и шаг по Y.
+    /// </summary>
+    private void ApplySpawnParentLayoutIfNeeded(GameObject go, int paletteSiblingIndex = -1)
+    {
+        if (go == null || spawnParent == null)
+            return;
+        if (!(spawnParent is RectTransform parentRt))
+            return;
+        if (!go.TryGetComponent<RectTransform>(out var rt))
+            return;
+
+        if (paletteSiblingIndex >= 0 && go.transform.parent == spawnParent)
+        {
+            int max = Mathf.Max(0, parentRt.childCount - 1);
+            rt.SetSiblingIndex(Mathf.Clamp(paletteSiblingIndex, 0, max));
+        }
+        else
+            rt.SetAsLastSibling();
+
+        if (SpawnParentHasUILayout(spawnParent))
+        {
+            Canvas.ForceUpdateCanvases();
+            LayoutRebuilder.ForceRebuildLayoutImmediate(parentRt);
+
+            float h = InferPaletteRowHeight(parentRt, rt);
+
+            // Полоса на всю ширину Content; pivot слева сверху — без «съезда» по горизонтали при VLG.
+            rt.anchorMin = new Vector2(0f, 1f);
+            rt.anchorMax = new Vector2(1f, 1f);
+            rt.pivot = new Vector2(0f, 1f);
+            rt.sizeDelta = new Vector2(0f, h);
+
+            var le = go.GetComponent<LayoutElement>();
+            if (le == null)
+                le = go.AddComponent<LayoutElement>();
+            le.minHeight = h;
+            le.preferredHeight = h;
+            le.flexibleHeight = 0f;
+            le.flexibleWidth = 0f;
+
+            Canvas.ForceUpdateCanvases();
+            LayoutRebuilder.ForceRebuildLayoutImmediate(parentRt);
+            StartCoroutine(CoRebuildSpawnParentLayoutDelayed(parentRt));
+            return;
+        }
+
+        if (!applySpawnRectLayout)
+            return;
+
+        ReflowManualSpawnChildren(parentRt);
+        StartCoroutine(CoRebuildSpawnParentLayoutDelayed(parentRt));
+    }
+
+    private IEnumerator CoRebuildSpawnParentLayoutDelayed(RectTransform parentRt)
     {
         yield return null;
-        if (content == null)
+        yield return null;
+        if (parentRt == null)
             yield break;
         Canvas.ForceUpdateCanvases();
-        LayoutRebuilder.ForceRebuildLayoutImmediate(content);
+        LayoutRebuilder.ForceRebuildLayoutImmediate(parentRt);
+        if (spawnParent == parentRt && applySpawnRectLayout && !SpawnParentHasUILayout(spawnParent))
+            ReflowManualSpawnChildren(parentRt);
+        var scroll = parentRt.GetComponentInParent<ScrollRect>();
+        if (scroll != null && scroll.viewport is RectTransform vrt)
+            LayoutRebuilder.ForceRebuildLayoutImmediate(vrt);
     }
 
-    private void RefreshCommandPaletteLayoutIfNeeded(Transform instantiatedParent)
-    {
-        if (instantiatedParent == null)
-            return;
-        if (commandPaletteScroll == null || commandPaletteScroll.content == null)
-            return;
-        if (instantiatedParent != commandPaletteScroll.content)
-            return;
+    /// <summary>Нужен ли дубликат при <see cref="DragAndDrop.OnBeginDrag"/> (см. поле в инспекторе).</summary>
+    public bool SpawnCommandCloneOnBeginDrag => spawnCommandCloneOnBeginDrag;
 
-        Canvas.ForceUpdateCanvases();
-        if (commandPaletteScroll.content is RectTransform crt)
-            LayoutRebuilder.ForceRebuildLayoutImmediate(crt);
-    }
-
-    public void SpawnVariableCommand()
+    public void SpawnVariableCommand(int paletteSiblingIndex = -1)
     {
         if (VariableCommandPrefab == null)
         {
@@ -134,21 +320,21 @@ public class DynamicScript
             return;
         }
 
-        Transform parent = GetCommandSpawnParent();
-        GameObject go = parent != null
-            ? Instantiate(VariableCommandPrefab, parent)
-            : Instantiate(VariableCommandPrefab);
-        if (parent == null)
-            Debug.LogWarning(
-                "CompilerManager: не задан Command Palette Scroll и spawn Parent — экземпляр создан без родителя.");
+        GameObject go;
+        if (spawnParent != null)
+            go = Instantiate(VariableCommandPrefab, spawnParent);
+        else
+        {
+            Debug.LogWarning("CompilerManager: spawnParent не задан — экземпляр создан без родителя.");
+            go = Instantiate(VariableCommandPrefab);
+        }
 
         CommandCounter++;
         go.name = $"VariableCommand_{CommandCounter}";
-        PlaceSpawnedCommandInPaletteList(go, parent);
-        RefreshCommandPaletteLayoutIfNeeded(parent);
+        ApplySpawnParentLayoutIfNeeded(go, paletteSiblingIndex);
     }
 
-    public void SpawnPrintCommand()
+    public void SpawnPrintCommand(int paletteSiblingIndex = -1)
     {
         if (PrintCommandPrefab == null)
         {
@@ -157,21 +343,21 @@ public class DynamicScript
             return;
         }
 
-        Transform parent = GetCommandSpawnParent();
-        GameObject go = parent != null
-            ? Instantiate(PrintCommandPrefab, parent)
-            : Instantiate(PrintCommandPrefab);
-        if (parent == null)
-            Debug.LogWarning(
-                "CompilerManager: не задан Command Palette Scroll и spawn Parent — экземпляр создан без родителя.");
+        GameObject go;
+        if (spawnParent != null)
+            go = Instantiate(PrintCommandPrefab, spawnParent);
+        else
+        {
+            Debug.LogWarning("CompilerManager: spawnParent не задан — экземпляр создан без родителя.");
+            go = Instantiate(PrintCommandPrefab);
+        }
 
         CommandCounter++;
         go.name = $"PrintCommand_{CommandCounter}";
-        PlaceSpawnedCommandInPaletteList(go, parent);
-        RefreshCommandPaletteLayoutIfNeeded(parent);
+        ApplySpawnParentLayoutIfNeeded(go, paletteSiblingIndex);
     }
 
-    public void SpawnIfConditionCommand()
+    public void SpawnIfConditionCommand(int paletteSiblingIndex = -1)
     {
         if (IfConditionCommandPrefab == null)
         {
@@ -180,21 +366,21 @@ public class DynamicScript
             return;
         }
 
-        Transform parent = GetCommandSpawnParent();
-        GameObject go = parent != null
-            ? Instantiate(IfConditionCommandPrefab, parent)
-            : Instantiate(IfConditionCommandPrefab);
-        if (parent == null)
-            Debug.LogWarning(
-                "CompilerManager: не задан Command Palette Scroll и spawn Parent — экземпляр создан без родителя.");
+        GameObject go;
+        if (spawnParent != null)
+            go = Instantiate(IfConditionCommandPrefab, spawnParent);
+        else
+        {
+            Debug.LogWarning("CompilerManager: spawnParent не задан — экземпляр создан без родителя.");
+            go = Instantiate(IfConditionCommandPrefab);
+        }
 
         CommandCounter++;
         go.name = $"IfConditionCommand_{CommandCounter}";
-        PlaceSpawnedCommandInPaletteList(go, parent);
-        RefreshCommandPaletteLayoutIfNeeded(parent);
+        ApplySpawnParentLayoutIfNeeded(go, paletteSiblingIndex);
     }
 
-    public void SpawnOpenBracketCommand()
+    public void SpawnOpenBracketCommand(int paletteSiblingIndex = -1)
     {
         if (OpenBracketCommandPrefab == null)
         {
@@ -203,21 +389,21 @@ public class DynamicScript
             return;
         }
 
-        Transform parent = GetCommandSpawnParent();
-        GameObject go = parent != null
-            ? Instantiate(OpenBracketCommandPrefab, parent)
-            : Instantiate(OpenBracketCommandPrefab);
-        if (parent == null)
-            Debug.LogWarning(
-                "CompilerManager: не задан Command Palette Scroll и spawn Parent — экземпляр создан без родителя.");
+        GameObject go;
+        if (spawnParent != null)
+            go = Instantiate(OpenBracketCommandPrefab, spawnParent);
+        else
+        {
+            Debug.LogWarning("CompilerManager: spawnParent не задан — экземпляр создан без родителя.");
+            go = Instantiate(OpenBracketCommandPrefab);
+        }
 
         CommandCounter++;
         go.name = $"OpenBracketCommand_{CommandCounter}";
-        PlaceSpawnedCommandInPaletteList(go, parent);
-        RefreshCommandPaletteLayoutIfNeeded(parent);
+        ApplySpawnParentLayoutIfNeeded(go, paletteSiblingIndex);
     }
 
-    public void SpawnCloseBracketCommand()
+    public void SpawnCloseBracketCommand(int paletteSiblingIndex = -1)
     {
         if (CloseBracketCommandPrefab == null)
         {
@@ -226,18 +412,64 @@ public class DynamicScript
             return;
         }
 
-        Transform parent = GetCommandSpawnParent();
-        GameObject go = parent != null
-            ? Instantiate(CloseBracketCommandPrefab, parent)
-            : Instantiate(CloseBracketCommandPrefab);
-        if (parent == null)
-            Debug.LogWarning(
-                "CompilerManager: не задан Command Palette Scroll и spawn Parent — экземпляр создан без родителя.");
+        GameObject go;
+        if (spawnParent != null)
+            go = Instantiate(CloseBracketCommandPrefab, spawnParent);
+        else
+        {
+            Debug.LogWarning("CompilerManager: spawnParent не задан — экземпляр создан без родителя.");
+            go = Instantiate(CloseBracketCommandPrefab);
+        }
 
         CommandCounter++;
         go.name = $"CloseBracketCommand_{CommandCounter}";
-        PlaceSpawnedCommandInPaletteList(go, parent);
-        RefreshCommandPaletteLayoutIfNeeded(parent);
+        ApplySpawnParentLayoutIfNeeded(go, paletteSiblingIndex);
+    }
+
+    public void SpawnForCommand(int paletteSiblingIndex = -1)
+    {
+        if (ForCommandPrefab == null)
+        {
+            Debug.LogError(
+                "CompilerManager: ForCommandPrefab не назначен. Перетащите префаб в поле ForCommandPrefab.");
+            return;
+        }
+
+        GameObject go;
+        if (spawnParent != null)
+            go = Instantiate(ForCommandPrefab, spawnParent);
+        else
+        {
+            Debug.LogWarning("CompilerManager: spawnParent не задан — экземпляр создан без родителя.");
+            go = Instantiate(ForCommandPrefab);
+        }
+
+        CommandCounter++;
+        go.name = $"ForCommand_{CommandCounter}";
+        ApplySpawnParentLayoutIfNeeded(go, paletteSiblingIndex);
+    }
+
+    public void SpawnWhileCommand(int paletteSiblingIndex = -1)
+    {
+        if (WhileCommandPrefab == null)
+        {
+            Debug.LogError(
+                "CompilerManager: WhileCommandPrefab не назначен. Перетащите префаб в поле WhileCommandPrefab.");
+            return;
+        }
+
+        GameObject go;
+        if (spawnParent != null)
+            go = Instantiate(WhileCommandPrefab, spawnParent);
+        else
+        {
+            Debug.LogWarning("CompilerManager: spawnParent не задан — экземпляр создан без родителя.");
+            go = Instantiate(WhileCommandPrefab);
+        }
+
+        CommandCounter++;
+        go.name = $"WhileCommand_{CommandCounter}";
+        ApplySpawnParentLayoutIfNeeded(go, paletteSiblingIndex);
     }
 
     /// <summary>
@@ -356,12 +588,7 @@ public class DynamicScript
         {
             if (t == holder)
                 continue;
-            string n = t.name;
-            if (n.StartsWith("VariableCommand", StringComparison.Ordinal) ||
-                n.StartsWith("PrintCommand", StringComparison.Ordinal) ||
-                n.StartsWith("IfConditionCommand", StringComparison.Ordinal) ||
-                n.StartsWith("OpenBracketCommand", StringComparison.Ordinal) ||
-                n.StartsWith("CloseBracketCommand", StringComparison.Ordinal))
+            if (IsPaletteCommandRootName(t.name))
                 return false;
         }
         return true;
@@ -465,6 +692,50 @@ public class DynamicScript
             sb.AppendLine("        }");
             return;
         }
+        else if (n.StartsWith("ForCommand", StringComparison.Ordinal))
+        {
+            TryAppendForCommandBody(sb, commandRoot, holderName);
+            return;
+        }
+        else if (n.StartsWith("WhileCommand", StringComparison.Ordinal))
+        {
+            TryAppendWhileCommandBody(sb, commandRoot, holderName);
+            return;
+        }
+    }
+
+    /// <summary>
+    /// Цикл while: дочерний <c>condition</c> — выражение в скобках заголовка (сырой C#). Тело — команда OpenBracket ниже по Holder.
+    /// </summary>
+    private void TryAppendWhileCommandBody(StringBuilder sb, Transform commandRoot, string holderName)
+    {
+        var conditionRoot = commandRoot.Find("condition");
+        string conditionText = ReadUiText(conditionRoot).Trim();
+
+        if (string.IsNullOrWhiteSpace(conditionText) || LooksLikePlaceholder(conditionRoot, conditionText))
+            return;
+
+        sb.AppendLine($"        while ({conditionText})");
+    }
+
+    /// <summary>
+    /// Цикл for: дочерний объект <c>condition</c> (поле ввода) — инициализация, условие и итератор одной строкой,
+    /// как внутри скобок в C#: <c>int i = 0; i &lt; 10; i++</c>. Открывающая <c>&#123;</c> — отдельной командой OpenBracket.
+    /// </summary>
+    private void TryAppendForCommandBody(StringBuilder sb, Transform commandRoot, string holderName)
+    {
+        var conditionRoot = commandRoot.Find("condition");
+        string inner = ReadUiText(conditionRoot).Trim();
+
+        if (string.IsNullOrWhiteSpace(inner) || LooksLikePlaceholder(conditionRoot, inner))
+            return;
+
+        if (inner.Length >= 2 &&
+            inner.StartsWith("(", StringComparison.Ordinal) &&
+            inner.EndsWith(")", StringComparison.Ordinal))
+            inner = inner.Substring(1, inner.Length - 2).Trim();
+
+        sb.AppendLine($"        for ({inner})");
     }
 
     /// <summary>

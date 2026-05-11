@@ -8,4 +8,6 @@ public enum CompilerCommandType
     IfConditionCommand = 2,
     OpenBracketCommand = 3,
     CloseBracketCommand = 4,
+    ForCommand = 5,
+    WhileCommand = 6,
 }

@@ -1,6 +1,8 @@
 using System.Collections;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.UI;
+using TMPro;
 
 public class DragAndDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler
 {
@@ -9,6 +11,9 @@ public class DragAndDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndD
     private Canvas canvas;
     private RectTransform parentRectTransform;
     private Vector2 dragOffset;
+
+    /// <summary>Жест начался над полем ввода — не перетаскиваем блок и не уничтожаем его в OnEndDrag.</summary>
+    private bool dragCancelledForNestedInput;
 
     /// <summary>Выставляется в <see cref="DropZone.OnDrop"/> при успешном сбросе.</summary>
     private bool dropAccepted;
@@ -47,9 +52,29 @@ public class DragAndDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndD
         }
     }
 
+    private static bool IsPointerPressOnNestedInput(PointerEventData eventData, Transform blockRoot)
+    {
+        GameObject go = eventData.pointerPressRaycast.gameObject;
+        if (go == null)
+            go = eventData.pointerPress;
+        if (go == null || blockRoot == null)
+            return false;
+        if (!go.transform.IsChildOf(blockRoot))
+            return false;
+        return go.GetComponentInParent<InputField>() != null ||
+               go.GetComponentInParent<TMP_InputField>() != null;
+    }
+
     public void OnBeginDrag(PointerEventData eventData)
     {
-        // Вынести под root Canvas, иначе RectMask2D у Scroll View палитры обрезает превью при перетаскивании.
+        dragCancelledForNestedInput = IsPointerPressOnNestedInput(eventData, transform);
+        if (dragCancelledForNestedInput)
+            return;
+
+        Transform paletteParentBeforeDrag = rectTransform != null ? rectTransform.parent : null;
+        int paletteSiblingIndexBeforeDrag = rectTransform != null ? rectTransform.GetSiblingIndex() : -1;
+
+        // Под root Canvas — иначе RectMask2D у Scroll View (палитра) обрезает превью при перетаскивании.
         var rootCanvas = GetComponentInParent<Canvas>()?.rootCanvas;
         if (rootCanvas != null && rectTransform != null)
         {
@@ -62,7 +87,8 @@ public class DragAndDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndD
         canvasGroup.alpha = 0.6f;
         canvasGroup.blocksRaycasts = false; // чтобы луч проходил сквозь объект
 
-        // Смещение считаем уже в координатах актуального родителя (после переноса на canvas).
+        // Для Screen Space Overlay (и в целом для UI) считаем смещение,
+        // чтобы элемент не "прыгал" и чтобы курсор совпадал с позицией перетаскивания.
         if (parentRectTransform != null &&
             RectTransformUtility.ScreenPointToLocalPointInRectangle(
                 parentRectTransform,
@@ -73,15 +99,21 @@ public class DragAndDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndD
             dragOffset = rectTransform.anchoredPosition - localPointerPos;
         }
 
-        if (compilerManager != null)
+        if (compilerManager != null && compilerManager.SpawnCommandCloneOnBeginDrag)
         {
             CompilerCommandType kind = commandSpawn != null ? commandSpawn.CommandKind : commandType;
-            compilerManager.SpawnCommand(kind);
+            bool fromPalette = compilerManager.spawnParent != null &&
+                               paletteParentBeforeDrag == compilerManager.spawnParent;
+            if (fromPalette)
+                compilerManager.SpawnCommand(kind, paletteSiblingIndexBeforeDrag);
         }
     }
 
     public void OnDrag(PointerEventData eventData)
     {
+        if (dragCancelledForNestedInput)
+            return;
+
         if (parentRectTransform == null)
             return;
 
@@ -97,6 +129,12 @@ public class DragAndDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndD
 
     public void OnEndDrag(PointerEventData eventData)
     {
+        if (dragCancelledForNestedInput)
+        {
+            dragCancelledForNestedInput = false;
+            return;
+        }
+
         canvasGroup.alpha = 1f;
         canvasGroup.blocksRaycasts = true;
 
