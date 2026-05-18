@@ -52,7 +52,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DragAndDrop
   compilerManager: {fileID: 0}
-  commandType: 3
+  commandType: 5
   prefab: {fileID: 8677485937724143058, guid: 565260a14e9856d418c27cad80d7cedb, type: 3}
 --- !u!114 &4543796934947628468
 MonoBehaviour:
@@ -67,7 +67,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CommandSpawn
   compilerManager: {fileID: 0}
-  commandType: 3
+  commandType: 5
 --- !u!1 &4330616642604361138
 GameObject:
   m_ObjectHideFlags: 0

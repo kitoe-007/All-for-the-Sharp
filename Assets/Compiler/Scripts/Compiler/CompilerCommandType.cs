@@ -1,13 +1,13 @@
 /// <summary>
-/// Тип команды для палитры, <see cref="DragAndDrop"/> и <see cref="CompilerManager.SpawnCommand"/>.
+/// Тип команды. Число = слот в палитре (0 — первый сверху).
 /// </summary>
 public enum CompilerCommandType
 {
     VariableCommand = 0,
     PrintCommand = 1,
     IfConditionCommand = 2,
-    OpenBracketCommand = 3,
-    CloseBracketCommand = 4,
-    ForCommand = 5,
-    WhileCommand = 6,
+    ForCommand = 3,
+    WhileCommand = 4,
+    OpenBracketCommand = 5,
+    CloseBracketCommand = 6,
 }

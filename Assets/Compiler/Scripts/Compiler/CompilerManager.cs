@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 using UnityEngine;
@@ -9,7 +10,8 @@ using UnityEngine.UI;
 
 public class CompilerManager : MonoBehaviour
 {
-    [SerializeField] private Transform content; // Scroll View/Viewport/Content
+    [Tooltip("Content редактора программы (Holder, команды). Не панель Output.")]
+    [SerializeField] private Transform content;
     [SerializeField] private Compiler compiler;
     private int CommandCounter = 1;
     private int HolderCounter = 1;
@@ -17,15 +19,18 @@ public class CompilerManager : MonoBehaviour
     public Transform ScrollContent => content;
 
     private string DynamicScriptStart = $@"
+using System.Text;
 using UnityEngine;
 public class DynamicScript
 {{
+    public string Result = """";
     public void Run()
     {{
-        
+        var __output = new StringBuilder();
 ";
 
     private string DynamicScriptEnd = $@"
+        Result = __output.ToString();
     }}
 }}";
 
@@ -47,6 +52,12 @@ public class DynamicScript
     public GameObject CloseBracketCommandPrefab;
     public GameObject ForCommandPrefab;
     public GameObject WhileCommandPrefab;
+
+    [Tooltip("Корень панели Output (Scroll View/Viewport/Content/Text). Не content редактора.")]
+    public GameObject OutPutObj;
+
+    [Tooltip("TMP для вывода Print. Перетащите Text из панели Output — надёжнее, чем автопоиск.")]
+    [SerializeField] private TMP_Text outputTextUi;
 
     [Tooltip("Вертикальный зазор между слотами Holder (как nextDropSpacingPixels у DropZone). Используется при сдвиге после удаления пустого слота.")]
     [SerializeField] private float holderVerticalSpacingPixels = 75f;
@@ -81,8 +92,10 @@ public class DynamicScript
         if (clearSpawnParentCommandsBeforePaletteSpawn)
             ClearExistingPaletteCommandRootsUnderSpawnParent();
 
-        foreach (CompilerCommandType t in Enum.GetValues(typeof(CompilerCommandType)))
-            SpawnCommand(t);
+        var types = (CompilerCommandType[])Enum.GetValues(typeof(CompilerCommandType));
+        System.Array.Sort(types, (a, b) => ((int)a).CompareTo((int)b));
+        foreach (CompilerCommandType t in types)
+            SpawnCommand(t, (int)t);
     }
 
     /// <summary>Прямые дети <see cref="spawnParent"/> с именами корней команд — как при старте из сцены + из SpawnFullCommandPalette.</summary>
@@ -106,10 +119,10 @@ public class DynamicScript
         return name.StartsWith("VariableCommand", StringComparison.Ordinal) ||
                name.StartsWith("PrintCommand", StringComparison.Ordinal) ||
                name.StartsWith("IfConditionCommand", StringComparison.Ordinal) ||
-               name.StartsWith("OpenBracketCommand", StringComparison.Ordinal) ||
-               name.StartsWith("CloseBracketCommand", StringComparison.Ordinal) ||
                name.StartsWith("ForCommand", StringComparison.Ordinal) ||
-               name.StartsWith("WhileCommand", StringComparison.Ordinal);
+               name.StartsWith("WhileCommand", StringComparison.Ordinal) ||
+               name.StartsWith("OpenBracketCommand", StringComparison.Ordinal) ||
+               name.StartsWith("CloseBracketCommand", StringComparison.Ordinal);
     }
 
     /// <summary>Спавн по типу команды.</summary>
@@ -656,7 +669,145 @@ public class DynamicScript
             return;
         }
 
-        compiler.ExecuteCompiledCode(asm, "DynamicScript", "Run");
+        string answer = ExecuteDynamicScriptAndGetResult(asm);
+        if (!SetOutputText(answer))
+            Debug.Log($"CompilerManager: ответ программы (панель Output не настроена): «{answer}»");
+
+        if (OutPutObj != null)
+        {
+            var taskMove = OutPutObj.GetComponent<Taskmove>();
+            if (taskMove != null)
+                taskMove.ismove = true;
+        }
+    }
+
+    private string ExecuteDynamicScriptAndGetResult(Assembly asm)
+    {
+        const string typeName = "DynamicScript";
+        const string methodName = "Run";
+        const string resultFieldName = "Result";
+
+        try
+        {
+            Type scriptType = asm.GetType(typeName);
+            if (scriptType == null)
+            {
+                foreach (Type t in asm.GetTypes())
+                {
+                    if (t.Name == typeName)
+                    {
+                        scriptType = t;
+                        break;
+                    }
+                }
+            }
+
+            if (scriptType == null)
+            {
+                Debug.LogError($"CompilerManager: класс {typeName} не найден в сборке.");
+                return string.Empty;
+            }
+
+            object instance = Activator.CreateInstance(scriptType);
+            var runMethod = scriptType.GetMethod(methodName);
+            if (runMethod == null)
+            {
+                Debug.LogError($"CompilerManager: метод {methodName} не найден.");
+                return string.Empty;
+            }
+
+            runMethod.Invoke(instance, null);
+
+            var resultField = scriptType.GetField(resultFieldName);
+            return resultField?.GetValue(instance) as string ?? string.Empty;
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"CompilerManager: ошибка выполнения DynamicScript: {ex.InnerException?.Message ?? ex.Message}");
+            return string.Empty;
+        }
+    }
+
+    /// <returns>false, если TMP для вывода не найден.</returns>
+    private bool SetOutputText(string text)
+    {
+        TMP_Text target = ResolveOutputText();
+        if (target == null)
+        {
+            if (OutPutObj == null && outputTextUi == null)
+            {
+                Debug.LogWarning(
+                    "CompilerManager: задайте Output Text Ui или Out Put Obj (панель Output).");
+            }
+            else
+            {
+                Debug.LogWarning(
+                    "CompilerManager: TMP_Text не найден. На Text должен быть TextMeshPro - Text. " +
+                    "Перетащите его в поле Output Text Ui.");
+            }
+
+            return false;
+        }
+
+        target.text = text ?? string.Empty;
+        target.ForceMeshUpdate();
+        RefreshOutputLayout(target.rectTransform);
+        ScrollOutputToBottom();
+        return true;
+    }
+
+    private static void RefreshOutputLayout(RectTransform start)
+    {
+        if (start == null) return;
+
+        Canvas.ForceUpdateCanvases();
+        for (RectTransform rt = start; rt != null; rt = rt.parent as RectTransform)
+            LayoutRebuilder.ForceRebuildLayoutImmediate(rt);
+    }
+
+    private TMP_Text ResolveOutputText()
+    {
+        if (outputTextUi != null)
+            return outputTextUi;
+
+        if (OutPutObj == null) return null;
+
+        Transform outputContent = OutPutObj.transform.Find("Scroll View/Viewport/Content");
+        if (outputContent != null)
+        {
+            var onContent = outputContent.GetComponent<TMP_Text>();
+            if (onContent != null) return onContent;
+
+            foreach (Transform child in outputContent)
+            {
+                if (!child.name.Equals("Text", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                var named = child.GetComponent<TMP_Text>();
+                if (named != null) return named;
+            }
+
+            return outputContent.GetComponentInChildren<TMP_Text>(true);
+        }
+
+        TMP_Text[] all = OutPutObj.GetComponentsInChildren<TMP_Text>(true);
+        foreach (TMP_Text tmp in all)
+        {
+            if (tmp.gameObject.name.Equals("Text", StringComparison.OrdinalIgnoreCase))
+                return tmp;
+        }
+
+        return all.Length > 0 ? all[0] : null;
+    }
+
+    private void ScrollOutputToBottom()
+    {
+        if (OutPutObj == null) return;
+
+        var scroll = OutPutObj.GetComponentInChildren<ScrollRect>(true);
+        if (scroll == null) return;
+
+        Canvas.ForceUpdateCanvases();
+        scroll.verticalNormalizedPosition = 0f;
     }
 
     /// <summary>
@@ -682,16 +833,6 @@ public class DynamicScript
             TryAppendIfConditionCommandBody(sb, commandRoot, holderName);
             return;
         }
-        else if (n.StartsWith("OpenBracketCommand", StringComparison.Ordinal))
-        {
-            sb.AppendLine("        {");
-            return;
-        }
-        else if (n.StartsWith("CloseBracketCommand", StringComparison.Ordinal))
-        {
-            sb.AppendLine("        }");
-            return;
-        }
         else if (n.StartsWith("ForCommand", StringComparison.Ordinal))
         {
             TryAppendForCommandBody(sb, commandRoot, holderName);
@@ -700,6 +841,16 @@ public class DynamicScript
         else if (n.StartsWith("WhileCommand", StringComparison.Ordinal))
         {
             TryAppendWhileCommandBody(sb, commandRoot, holderName);
+            return;
+        }
+        else if (n.StartsWith("OpenBracketCommand", StringComparison.Ordinal))
+        {
+            sb.AppendLine("        {");
+            return;
+        }
+        else if (n.StartsWith("CloseBracketCommand", StringComparison.Ordinal))
+        {
+            sb.AppendLine("        }");
             return;
         }
     }
@@ -735,12 +886,38 @@ public class DynamicScript
             inner.EndsWith(")", StringComparison.Ordinal))
             inner = inner.Substring(1, inner.Length - 2).Trim();
 
+        inner = NormalizeForLoopHeader(inner);
         sb.AppendLine($"        for ({inner})");
     }
 
     /// <summary>
-    /// Команда вывода: в UI поле <c>param</c> — имя переменной (как в C#) или литерал/выражение,
-    /// по тем же правилам, что поле значения у VariableCommand (<see cref="ToCSharpExpression"/>).
+    /// Подправляет заголовок for из UI: <c>int i; i &lt; n; i++</c> → <c>int i = 0; i &lt; n; i++</c>.
+    /// </summary>
+    private static string NormalizeForLoopHeader(string inner)
+    {
+        if (string.IsNullOrWhiteSpace(inner))
+            return inner;
+
+        int semi1 = inner.IndexOf(';');
+        if (semi1 < 0)
+            return inner;
+        int semi2 = inner.IndexOf(';', semi1 + 1);
+        if (semi2 < 0)
+            return inner;
+
+        string init = inner.Substring(0, semi1).Trim();
+        string cond = inner.Substring(semi1 + 1, semi2 - semi1 - 1).Trim();
+        string iter = inner.Substring(semi2 + 1).Trim();
+
+        if (Regex.IsMatch(init, @"^int\s+[A-Za-z_][A-Za-z0-9_]*\s*$"))
+            init += " = 0";
+
+        return $"{init}; {cond}; {iter}";
+    }
+
+    /// <summary>
+    /// Команда вывода: в UI поле <c>param</c> — имя переменной, литерал (<see cref="ToCSharpExpression"/>)
+    /// или сырое C#-выражение (<c>a[i]</c>, вызовы, операторы).
     /// </summary>
     private void TryAppendPrintCommandBody(StringBuilder sb, Transform commandRoot, string holderName)
     {
@@ -753,7 +930,13 @@ public class DynamicScript
         var variableName = SanitizeIdentifier(paramText);
         if (!string.IsNullOrWhiteSpace(variableName))
         {
-            sb.AppendLine($"        Debug.Log({variableName});");
+            sb.AppendLine($"        __output.AppendLine(System.Convert.ToString({variableName}));");
+            return;
+        }
+
+        if (LooksLikeRawCSharpExpression(paramText))
+        {
+            sb.AppendLine($"        __output.AppendLine(System.Convert.ToString({paramText.Trim()}));");
             return;
         }
 
@@ -765,7 +948,7 @@ public class DynamicScript
             return;
         }
 
-        sb.AppendLine($"        Debug.Log({expr});");
+        sb.AppendLine($"        __output.AppendLine(System.Convert.ToString({expr}));");
     }
 
     /// <summary>
@@ -838,6 +1021,28 @@ public class DynamicScript
         if (string.IsNullOrWhiteSpace(raw)) return string.Empty;
         string s = raw.Trim();
         return Regex.IsMatch(s, @"^[A-Za-z_][A-Za-z0-9_]*$") ? s : string.Empty;
+    }
+
+    /// <summary>
+    /// Текст из UI уже похож на C#-выражение (индексатор, вызов, оператор), а не на простой идентификатор/литерал.
+    /// </summary>
+    private static bool LooksLikeRawCSharpExpression(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return false;
+        string s = raw.Trim();
+
+        if (s.StartsWith("\"") && s.EndsWith("\"") && s.Length >= 2) return false;
+        if (s.StartsWith("'") && s.EndsWith("'") && s.Length >= 3) return false;
+        if (bool.TryParse(s, out _)) return false;
+        if (s.Equals("null", StringComparison.OrdinalIgnoreCase)) return false;
+        if (int.TryParse(s, out _)) return false;
+        if (float.TryParse(s, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out _)) return false;
+        if (double.TryParse(s, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out _)) return false;
+        if (Regex.IsMatch(s, @"^[A-Za-z_][A-Za-z0-9_]*$")) return false;
+
+        if (s.IndexOf('[') >= 0 || s.IndexOf('(') >= 0) return true;
+        if (s.IndexOf('.') >= 0) return true;
+        return Regex.IsMatch(s, @"[+\-*/%<>=!&|^~?:]");
     }
 
     private static string ToCSharpExpression(string raw)

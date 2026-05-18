@@ -5,7 +5,7 @@ public class CommandSpawn : MonoBehaviour
     [SerializeField] private CompilerManager compilerManager;
     [SerializeField] private CompilerCommandType commandType;
 
-    public CompilerCommandType CommandKind => commandType;
+    public CompilerCommandType CommandKind => CompilerCommandKind.FromRootName(gameObject.name);
 
     void Awake()
     {
@@ -15,6 +15,6 @@ public class CommandSpawn : MonoBehaviour
 
     public void Spawn()
     {
-        compilerManager?.SpawnCommand(commandType);
+        compilerManager?.SpawnCommand(CommandKind);
     }
 }

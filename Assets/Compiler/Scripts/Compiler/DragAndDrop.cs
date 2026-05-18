@@ -72,7 +72,10 @@ public class DragAndDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndD
             return;
 
         Transform paletteParentBeforeDrag = rectTransform != null ? rectTransform.parent : null;
-        int paletteSiblingIndexBeforeDrag = rectTransform != null ? rectTransform.GetSiblingIndex() : -1;
+        CompilerCommandType dragKind = commandSpawn != null
+            ? commandSpawn.CommandKind
+            : CompilerCommandKind.FromRootName(gameObject.name);
+        int paletteSlotForClone = (int)dragKind;
 
         // Под root Canvas — иначе RectMask2D у Scroll View (палитра) обрезает превью при перетаскивании.
         var rootCanvas = GetComponentInParent<Canvas>()?.rootCanvas;
@@ -101,11 +104,10 @@ public class DragAndDrop : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndD
 
         if (compilerManager != null && compilerManager.SpawnCommandCloneOnBeginDrag)
         {
-            CompilerCommandType kind = commandSpawn != null ? commandSpawn.CommandKind : commandType;
             bool fromPalette = compilerManager.spawnParent != null &&
                                paletteParentBeforeDrag == compilerManager.spawnParent;
             if (fromPalette)
-                compilerManager.SpawnCommand(kind, paletteSiblingIndexBeforeDrag);
+                compilerManager.SpawnCommand(dragKind, paletteSlotForClone);
         }
     }
 
